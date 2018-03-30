@@ -1,0 +1,13 @@
+[   {
+        "ExchangeName": "Huobi",
+        "TradePairName": "BCH_BTC",
+        "BalanceLimit": 2.8,
+        "NowCoinPrice": 0,
+        "BuyFee": 0.002,
+        "SellFee": 0.002,
+        "PriceDecimalPlace": 2,
+        "StockDecimalPlace": 4,
+        "MinStockAmount": 0.001,
+        "Debug": 1
+    }
+]
