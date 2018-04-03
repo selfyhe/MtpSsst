@@ -427,7 +427,6 @@ function checkCanBuy(records, ticker, ma, crossnum){
 	var ktypes = [4, 6, 7, 9, 10, 11, 12, 13, 14, 15];
     var nowticker = records[records.length-1];
     var manow = ma[ma.length-1];
-	Log("nowticker.Close",nowticker.Close,"nowticker.Type",nowticker.Type);
     if(crossnum > 0 && nowticker.Close > manow && ktypes.indexOf(nowticker.Type) != -1){
 		//满总前两个条件，判断后三个条件
 		Log("满总前两个条件，判断后三个条件");
@@ -454,11 +453,10 @@ function checkCanBuy(records, ticker, ma, crossnum){
 		//计算平均成交量
 		var kcycle = (records[records.length-1].Time-records[records.length-2].Time)/60000;
 		var knuminhour = 60/kcycle;
-		Log("kcycle",kcycle,"knuminhour",knuminhour);
 		if(ticker.Volume/24/knuminhour < subvolume/knum){
 			//满总成交量的条件
 			Log("满总成交量的条件");
-			if(fristticker.Time == nowticker.Time && nowticker.Close/fristticker.Open > 1.015 || fristticker.Time != nowticker.Time && nowticker.Close/fristticker.Open > 1.01){
+			if(fristticker.Time == nowticker.Time && nowticker.Close/fristticker.Open > 1.02 || fristticker.Time != nowticker.Time && (nowticker.Close/fristticker.Open > 1.015 || (nowticker.Close/records[records.length-crossnum].Open) > 1.015)){
 				//符合买入条件
 				ret = true;
 				Log("符合买入条件");
@@ -466,48 +464,6 @@ function checkCanBuy(records, ticker, ma, crossnum){
 		}
 	}
     return ret;
-}
-
-/**************************
-检测是否跌破止损线（防守线）
-1.如果当前K是就是最后买入的那根K线，说明刚刚买入不久价格在买入的几分钟可能上下波动属正常，防守线是持仓均价向下浮动0.005
-2.如果当前K是买入K后的第一条K线，那么就定为买入的持仓均价
-3.如果当前K是买入K后的第二条及以后的K线，那么防守线是持仓成本线（均价+交易费用）
-**************************/
-function checkBreakDefenseLine(tp, records, ticker){
-	var ret = false;
-	//确定K线位置
-	var lastbuy = _G(tp.Name+"_LastBuyTS");
-	var klinenum = 0;
-	for(var i = records.length - 1;i>=0;i--){
-		if(records[i].Time <= lastbuy){
-			break;
-		}else{
-			klinenum++;
-		}
-		if(klinenum >=2) break;
-	}
-	//确定防守线(每次买入成功后会重置防守线为均价)
-	var defenseline = _G(tp.Name+"_StopLinePrice");
-	var newdefenseline = 0;
-	var avgPrice = _G(tp.Name+"_AvgPrice");
-	//防守线还是均价，买入后第一次，需要重新调整
-	if(klinenum === 0){
-		newdefenseline = avgPrice*(1-0.005);
-	}else if(klinenum === 1){
-		newdefenseline = avgPrice;
-	}else if(klinenum >= 2){
-		newdefenseline = avgPrice*(1+tp.Args.BuyFee+tp.Args.BuyFee);
-	}
-	if(defenseline != newdefenseline) _G(tp.Name+"_StopLinePrice", newdefenseline);
-	//判断是否跌破
-	if(newdefenseline > ticker.Last){
-		if(tp.Args.Debug) Log("当前价",ticker.Last," < 防守线", newdefenseline);
-		ret = true;
-	}else{
-		if(tp.Args.Debug) Log("当前价",ticker.Last," > 防守线", newdefenseline);
-	}
-	return ret;
 }
 
 /********************
@@ -1125,11 +1081,7 @@ function BearMarketTactics(tp) {
 				if(debug) Log("当前没有建仓，但当前没有达到建仓条件，继续观察行情。");
 			}
 		}else{
-			//当前有持仓,先看看防守线有没有被突破
-			if(LastRecord.Type < 0 && checkBreakDefenseLine(tp, Records, Ticker)){
-				if(debug) Log("当前价跌破防守线，准备操作止损。");
-				doCostPriceSell(tp, Account, Ticker);
-			}else if(_G(tp.Name+"_CanTargetProfitNum") > 0){
+			if(_G(tp.Name+"_CanTargetProfitNum") > 0){
 				//正在操作的止盈还没有完成
 				if(debug) Log("本次止盈操作还没有完成，还有",_G(tp.Name+"_CanTargetProfitNum"),"个币需要卖出，继续操作止盈。");
 				doTargetProfitSell(tp, Account, Ticker);
@@ -1160,8 +1112,9 @@ function BearMarketTactics(tp) {
 			doInstantSell(tp, Account, Ticker);
 		}else{
 			if(debug) Log("当前下跌行情，交叉数为",CrossNum,"，当前已经完成平仓，继续观察行情。");
-			//重置止盈次数
+			//重置止盈次数及买完成标识
 			_G(tp.Name+"_TargetProfitTimes", 0);
+			_G(tp.Name+"_BuyFinished", 0);
 		}
 	}
 }
