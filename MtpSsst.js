@@ -149,7 +149,7 @@ function parseArgsJson(json){
 					}
 					TradePairs.push(tp);
 					//初始化其他参数
-					if(!_G(tp.Name+"_BalanceLimit")) _G(tp.Name+"_BalanceLimit",Args.BalanceLimit);
+					_G(tp.Name+"_BalanceLimit",Args.BalanceLimit);
 					if(!_G(tp.Name+"_AvgPrice")) _G(tp.Name+"_AvgPrice",Args.NowCoinPrice);
 					if(!_G(tp.Name+"_BuyTimes")) _G(tp.Name+"_BuyTimes",0);
 					if(!_G(tp.Name+"_SellTimes")) _G(tp.Name+"_SellTimes",0);
@@ -161,7 +161,7 @@ function parseArgsJson(json){
 					if(!_G(tp.Name+"_TargetProfitTimes")) _G(tp.Name+"_TargetProfitTimes",0);
 					if(!_G(tp.Name+"_CanTargetProfitNum")) _G(tp.Name+"_CanTargetProfitNum",0);		
 					if(!_G(tp.Name+"_EveryTimesTPSN")) _G(tp.Name+"_EveryTimesTPSN",0);							
-					if(!_G(tp.Name+"_BuyFinished")) _G(tp.Name+"_BuyFinished",0);
+					if(!_G(tp.Name+"_CanBuy")) _G(tp.Name+"_CanBuy",1);
 					if(!_G(tp.Name+"_LastOrderId")) _G(tp.Name+"_LastOrderId",0);
 					if(!_G(tp.Name+"_OperatingStatus")) _G(tp.Name+"_OperatingStatus",OPERATE_STATUS_NONE);
 					if(!_G(tp.Name+"_AddTime")) _G(tp.Name+"_AddTime",_D());
@@ -484,30 +484,34 @@ function identifyYinYangYin(tp, records, ma, crossnum){
 		readid = 2;
 	}
     var nowticker = records[records.length-readid];
-    if(nowticker.Type > 0) return ret;
     var manow = ma[ma.length-readid];
     //首先判断K线的收盘价是否在14均线之下
     if(nowticker.Close < manow){
-        //首要条件成立，回找之前的K线有没有出现收盘价格的阴线
-        var start = records.length-readid;
-        var end = start - crossnum;
-        var haveyangk = false;
-        for(var i = start;i>end;i--){
-            if(records[i].Type > 0){
-                haveyangk = true;    
-            }
-            //判断是否有收盘价高于当前K的阴线
-            if(haveyangk && records[i].Type < 0 && records[i].Close > nowticker.Close){
-                ret = true;
-				if(tp.Args.Debug){
-					if(lastsignalts > 0){
-						Log("当前K线出现阴阳阴信号，上一次出现止盈信号是在",_D(lastsignalts));
-					}else{
-						Log("当前K线出现阴阳阴信号，这是买入后第一次出现");
-					}
+        //首要条件成立，再判断当前收盘价是否已经低于均价，如果低也算是阴阳阴
+		if(nowticker.Close < _G(tp.Name+"_AvgPrice")){
+			ret = true;
+		}else{
+			//如果没有低于均价，回找当前K线之前的K线有没有出现收盘价较高的阴线
+			var start = records.length-readid;
+			var end = start - crossnum;
+			var haveyangk = false;
+			for(var i = start;i>end;i--){
+				if(records[i].Type > 0){
+					haveyangk = true;    
 				}
-                break;
-            }
+				//判断是否有收盘价高于当前K的阴线
+				if(haveyangk && records[i].Type < 0 && records[i].Close > nowticker.Close){
+					ret = true;
+					break;
+				}
+			}
+		}
+		if(ret && tp.Args.Debug){
+			if(lastsignalts > 0){
+				Log("当前K线出现阴阳阴信号，上一次出现止盈信号是在",_D(lastsignalts));
+			}else{
+				Log("当前K线出现阴阳阴信号，这是买入后第一次出现");
+			}
         }
     }
     return ret;
@@ -527,7 +531,7 @@ function identifyTopSellOffSignal(tp, records){
     //如果之前没出现过信号（lastsignalts = 0）就往前看一根K线为准，已经出现过信号，那就看当前K线实时信号
 	var lastsignalts = _G(tp.Name+"_LastSignalTS");
 	if(lastsignalts == records[records.length-1].Time) return ret; //不在同一跟K线进行多次止盈
-	if(records[records.length-1].Type>0) return ret;	//如果当前K线是阳线状态就不理
+	//if(records[records.length-1].Type>0) return ret;	//如果当前K线是阳线状态就不理
 	//获取买入后的最高价
 	var maxprice = records[records.length-1].High;
 	var lastbuyts = _G(tp.Name+"_LastBuyTS");
@@ -570,14 +574,19 @@ function identifyDarkCloudCover(tp, records){
 	}else{
 		readid = 2;
 	}
+	Log(readid);
     var nowticker = records[records.length-readid];
+	Log(nowticker);
     var lastticker = records[records.length-readid-1];
+	Log(lastticker);
     var nowtype = [-4, -5, -6, -7, -10, -11, -12, -13, -14, -15];
     var middletype = [7, 10, 11]; //中阳线
     var bigtype = [12, 13, 14, 15]; //大阳线
-    if(nowtype.indexOf(nowticker.Type) != -1 && (bigtype.indexOf(lastticker.Type) != -1 || middletype.indexOf(lastticker.Type) != -1 && (lastticker.Close - lastticker.Open)/lastticker.Open > 0.008)){
-        //线型是符合了，再看看后K体是否超过前K体的一半，并且收盘价低于前K收盘价的一半
-        if((nowticker.Open-nowticker.Close) > (lastticker.Close - lastticker.Open)/2 && nowticker.Close < (lastticker.High-lastticker.Low)/2){
+	Log(nowtype.indexOf(nowticker.Type)," != -1 && (",bigtype.indexOf(lastticker.Type)," != -1 || ",middletype.indexOf(lastticker.Type)," != -1 && ",lastticker.Close/lastticker.Open," > 1.006 || (",lastticker.Type," > 0 && ",(nowticker.High-nowticker.Low)," > ",(lastticker.High-lastticker.Low),"))");
+    if(nowtype.indexOf(nowticker.Type) != -1 && (bigtype.indexOf(lastticker.Type) != -1 || middletype.indexOf(lastticker.Type) != -1 && lastticker.Close/lastticker.Open > 1.006 || (lastticker.Type > 0 && (nowticker.High-nowticker.Low) > (lastticker.High-lastticker.Low) && nowticker.Close < ((lastticker.High-lastticker.Low)/2+lastticker.Low)))){
+		Log("符合第一条件")
+		//线型是符合了，再看看后K体是否超过前K体的一半，并且收盘价低于前K收盘价的一半
+        if((nowticker.Open-nowticker.Close) > (lastticker.Close - lastticker.Open)/2 && nowticker.Close < ((lastticker.High-lastticker.Low)/2+lastticker.Low)){
             ret = true;    
         }else if((nowticker.High - nowticker.Low) > (lastticker.High-lastticker.Low)){
 			//可能最后收盘不一定是在上条K体中间，但是最大下跌幅定超过了上个K线的上升幅度
@@ -830,7 +839,6 @@ function doBuy(tp, Account, Ticker, lastrecordtime){
 		}
 	}else{
 		//买入操作完成。
-		_G(tp.Name+"_BuyFinished", 1);
 		Log("当交易对持仓成本",tp.TPInfo.CostTotal,"，限仓金额",balancelimit,"，账户余额",Account.Balance,"，算出的可买数量只有",opAmount,"，已经无法继续买入，买入操作完成。");
 	}
 }
@@ -868,6 +876,8 @@ function doTargetProfitSell(tp, Account, Ticker){
 	}else{
 		Log("当前持仓",Account.Stocks,"，本次可止盈数量为",canTargetProfitNum,"，当前可卖出数量小于最小交易量，本次止盈操作完成。");
 	}
+	//不让再买入了
+	_G(tp.Name+"_CanBuy", 0);
 }
 
 /***********
@@ -890,6 +900,8 @@ function doCostPriceSell(tp, Account, Ticker){
 	}else{
 		Log("当前持仓",Account.Stocks,"，当前可卖出数量小于最小交易量，本次按成本价平仓操作完成。");
 	}
+	//不让再买入了
+	_G(tp.Name+"_CanBuy", 0);
 }
 
 
@@ -912,6 +924,8 @@ function doInstantSell(tp, Account, Ticker){
 	}else{
 		Log("当前持仓",Account.Stocks,"，当前可卖出数量小于最小交易量，本次按市价立即卖出操作完成。");
 	}
+	//不让再买入了
+	_G(tp.Name+"_CanBuy", 0);
 }
 
 //牛市策略，主业务流程 
@@ -1072,7 +1086,7 @@ function BearMarketTactics(tp) {
 		//3)否则判断是否还有仓位，如果有可以在当前买入
 		//2.没有持仓，判断当前是否可以买入，如果可以就买入
 		if(debug) Log("当前上行行情，交叉数为",CrossNum,"，当前K线类型为", LastRecord.Type);
-		if(Account.Stocks <= tp.Args.MinStockAmount && _G(tp.Name+"_TargetProfitTimes") === 0){
+		if(Account.Stocks <= tp.Args.MinStockAmount && _G(tp.Name+"_CanBuy") === 1){
 			//没有持仓，可以考虑买入
 			if(checkCanBuy(Records, Ticker, MAArray, CrossNum)){
 				if(debug) Log("当前没有建仓，满足建仓条件，准备操作买入操作。");
@@ -1081,16 +1095,27 @@ function BearMarketTactics(tp) {
 				if(debug) Log("当前没有建仓，但当前没有达到建仓条件，继续观察行情。");
 			}
 		}else{
-			if(_G(tp.Name+"_CanTargetProfitNum") > 0){
+			if((Ticker.Last/avgPrice) <= 1.015 && (identifyDarkCloudCover(tp, Records) || identifyYinYangYin(tp, Records, MAArray, CrossNum))){
+				//如果在没有达到1.5%浮盈之前出现阴阳阴或是乌云压顶，那尽快进行止损
+				if(debug) Log("在没有达到1.5%浮盈之前出现阴阳阴或是乌云压顶，那尽快进行止损。");
+				doInstantSell(tp, Account, Ticker);
+			}else if(_G(tp.Name+"_CanTargetProfitNum") > 0){
 				//正在操作的止盈还没有完成
 				if(debug) Log("本次止盈操作还没有完成，还有",_G(tp.Name+"_CanTargetProfitNum"),"个币需要卖出，继续操作止盈。");
 				doTargetProfitSell(tp, Account, Ticker);
-			}else if((LastRecord.Time > _G(tp.Name+"_LastBuyTS")) && ((Ticker.Last/avgPrice) > 1.015) && (identifyTopSellOffSignal(tp, Records) || identifyDarkCloudCover(tp, Records) || identifyYinYangYin(tp, Records, MAArray, CrossNum))){
+			}else if(((Ticker.Last/avgPrice) > 1.015) && (identifyTopSellOffSignal(tp, Records) || identifyDarkCloudCover(tp, Records) || identifyYinYangYin(tp, Records, MAArray, CrossNum))){
 				//写入信号发现的K线，不在同一个信号点多次操作止盈
 				_G(tp.Name+"_LastSignalTS", LastRecord.Time);
-				if(debug) Log("出现止盈信号，准备操作止盈卖出。");
-				doTargetProfitSell(tp, Account, Ticker);
-			}else if(_G(tp.Name+"_BuyFinished") === 0 && _G(tp.Name+"_TargetProfitTimes") === 0 && Account.Balance > tp.Args.MinStockAmount*Ticker.Last && stockValue < _G(tp.Name+"_BalanceLimit")){
+				//取得金叉以来拉升的点数
+				var firstprice =  Records[Records.length-CrossNum].Open;
+				if(CrossNum<5 && Ticker.High/firstprice >1.05){
+					if(debug) Log("金叉到现在最高价已经超过5个点，拉得太快，跌得也会快，尽快出手。");
+					doInstantSell(tp, Account, Ticker);
+				}else{
+					if(debug) Log("出现止盈信号，准备操作止盈卖出。");
+					doTargetProfitSell(tp, Account, Ticker);
+				}
+			}else if(_G(tp.Name+"_CanBuy") === 1 && Account.Balance > tp.Args.MinStockAmount*Ticker.Last && costTotal < _G(tp.Name+"_BalanceLimit")){
 				//有持仓，当是还可以买入，看看行情可不可以继续买入
 				if(checkCanBuy(Records, Ticker, MAArray, CrossNum)){
 					if(debug) Log("当前还有仓位并且达到开仓条件，准备操作买入操作。");
@@ -1114,7 +1139,7 @@ function BearMarketTactics(tp) {
 			if(debug) Log("当前下跌行情，交叉数为",CrossNum,"，当前已经完成平仓，继续观察行情。");
 			//重置止盈次数及买完成标识
 			_G(tp.Name+"_TargetProfitTimes", 0);
-			_G(tp.Name+"_BuyFinished", 0);
+			_G(tp.Name+"_CanBuy", 1);
 		}
 	}
 }
@@ -1172,7 +1197,7 @@ function showStatus(nowtp){
 			var tp = TradePairs[r];
 			var i = tp.TPInfo;
 			rows.push([tp.Title, _G(tp.Name+"_BuyTimes"), _G(tp.Name+"_SellTimes"), (_G(tp.Name+"_BuyTimes")+_G(tp.Name+"_SellTimes")), 
-				_G(tp.Name+"_TargetProfitTimes"),parseFloat(i.CostTotal*100/tp.Args.BalanceLimit).toFixed(2)+'%', parseFloat(_G(tp.Name+"_SubProfit").toFixed(8)), getOperatingStatus(_G(tp.Name+"_OperatingStatus")), _G(tp.Name+"_AddTime"), tp.LastUpdate]);
+				_G(tp.Name+"_TargetProfitTimes"),parseFloat(i.CostTotal*100/_G(tp.Name+"_BalanceLimit")).toFixed(2)+'%', parseFloat(_G(tp.Name+"_SubProfit").toFixed(8)), getOperatingStatus(_G(tp.Name+"_OperatingStatus")), _G(tp.Name+"_AddTime"), tp.LastUpdate]);
 		}
 		accounttable1.rows = rows;
 		accounttables.push(accounttable1);
@@ -1195,7 +1220,7 @@ function showStatus(nowtp){
 		for(var r=0;r<accounttable1.rows.length;r++){
 			if(nowtp.Title == accounttable1.rows[r][0]){
 				accounttable1.rows[r] =[nowtp.Title, _G(nowtp.Name+"_BuyTimes"), _G(nowtp.Name+"_SellTimes"), (_G(nowtp.Name+"_BuyTimes")+_G(nowtp.Name+"_SellTimes")), 
-					_G(nowtp.Name+"_TargetProfitTimes"), parseFloat((nowtp.TPInfo.CostTotal*100/nowtp.Args.BalanceLimit).toFixed(2))+'%', parseFloat(_G(nowtp.Name+"_SubProfit").toFixed(8)), getOperatingStatus(_G(nowtp.Name+"_OperatingStatus")), _G(nowtp.Name+"_AddTime"), nowtp.LastUpdate];
+					_G(nowtp.Name+"_TargetProfitTimes"), parseFloat((nowtp.TPInfo.CostTotal*100/_G(nowtp.Name+"_BalanceLimit")).toFixed(2))+'%', parseFloat(_G(nowtp.Name+"_SubProfit").toFixed(8)), getOperatingStatus(_G(nowtp.Name+"_OperatingStatus")), _G(nowtp.Name+"_AddTime"), nowtp.LastUpdate];
 				break;
 			}	
 		}
