@@ -430,32 +430,48 @@ function checkCanBuy(records, ticker, ma, crossnum){
     if(crossnum > 0 && nowticker.Close > manow && ktypes.indexOf(nowticker.Type) != -1){
 		//满总前两个条件，判断后三个条件
 		Log("满总前两个条件，判断后三个条件");
+		var volumeok = false;
 		var fristticker = nowticker;
-		var subvolume = fristticker.Volume;
-		var knum = 1;
-		for(var i= records.length-2;i>-1;i--){
-			if(records[i].Type <= 0){
-				break;
-			}else{
-				//找到上一条阳线
-				fristticker = records[i];
-				subvolume += fristticker.Volume;
-				knum++;
-			}
-		}
-		//计算成交量
-		//调整成交量,如果前面有阳线，那么当前K线不算，因为可能是刚刚开始，成交量不准确
-		if(knum > 1){
-			knum--;
-			subvolume -= nowticker.Volume;
-		}
-		Log("knum",knum,"subvolume",subvolume);
 		//计算平均成交量
 		var kcycle = (records[records.length-1].Time-records[records.length-2].Time)/60000;
 		var knuminhour = 60/kcycle;
-		if(ticker.Volume/24/knuminhour < subvolume/knum){
-			//满总成交量的条件
-			Log("满总成交量的条件");
+		var dayavgvolume = ticker.Volume/24/knuminhour;
+		//判断当前K线成交易够不够
+		if(dayavgvolume < nowticker.Volume){
+			Log("当前K线成交量大于平均值，达到成交量的条件");
+			volumeok = true;
+			//也要找到第一根阳K线
+			for(var i= records.length-2;i>-1;i--){
+				if(records[i].Type <= 0){
+					break;
+				}else{
+					//找到上一条阳线
+					fristticker = records[i];
+				}
+			}
+		}else{
+			//当前K线不够，可能是当前K线刚刚开始，算前几条K线平均值
+			var subvolume = 0;
+			var knum = 0;
+			for(var i= records.length-2;i>-1;i--){
+				if(records[i].Type <= 0){
+					break;
+				}else{
+					//找到上一条阳线
+					fristticker = records[i];
+					subvolume += fristticker.Volume;
+					knum++;
+				}
+			}
+			Log("nowticker",_D(nowticker.Time),"fristticker",_D(fristticker.Time),"不包当前K的knum",knum,"subvolume",subvolume);
+			if(dayavgvolume < subvolume/knum){
+				//满总成交量的条件
+				Log("不算当前K往前推的所有阳线平均成交量，达到成交量的条件");
+				volumeok = true;
+			}
+		}
+		if(volumeok){
+			Log("满足成交量的条件，再来判断涨幅是否能达到条件");
 			if(fristticker.Time == nowticker.Time && nowticker.Close/fristticker.Open > 1.02 || fristticker.Time != nowticker.Time && (nowticker.Close/fristticker.Open > 1.015 || (nowticker.Close/records[records.length-crossnum].Open) > 1.015)){
 				//符合买入条件
 				ret = true;
@@ -574,11 +590,8 @@ function identifyDarkCloudCover(tp, records){
 	}else{
 		readid = 2;
 	}
-	Log(readid);
     var nowticker = records[records.length-readid];
-	Log(nowticker);
     var lastticker = records[records.length-readid-1];
-	Log(lastticker);
     var nowtype = [-4, -5, -6, -7, -10, -11, -12, -13, -14, -15];
     var middletype = [7, 10, 11]; //中阳线
     var bigtype = [12, 13, 14, 15]; //大阳线
@@ -1105,7 +1118,13 @@ function BearMarketTactics(tp) {
 				doTargetProfitSell(tp, Account, Ticker);
 			}else if(((Ticker.Last/avgPrice) > 1.015) && (identifyTopSellOffSignal(tp, Records) || identifyDarkCloudCover(tp, Records) || identifyYinYangYin(tp, Records, MAArray, CrossNum))){
 				//写入信号发现的K线，不在同一个信号点多次操作止盈
-				_G(tp.Name+"_LastSignalTS", LastRecord.Time);
+				var lastsignalts = _G(tp.Name+"_LastSignalTS");
+				if(lastsignalts === 0){
+					//如果是第一次发现信号，形态形成的时间应该是上一个K线
+					_G(tp.Name+"_LastSignalTS", Records[Records.length-2].Time);
+				}else{
+					_G(tp.Name+"_LastSignalTS", LastRecord.Time);
+				}
 				//取得金叉以来拉升的点数
 				var firstprice =  Records[Records.length-CrossNum].Open;
 				if(CrossNum<5 && Ticker.High/firstprice >1.05){
