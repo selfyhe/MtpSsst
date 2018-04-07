@@ -415,7 +415,7 @@ function addTickerType(records){
 判断当前是否适合买入
 判断依据：
 1.当前处于金叉之后的阳线，且阳线为上升形K线
-2.当前价格在14日均线之上
+2.当前价格在14日均线之上，且高于14日均线价1%以上
 3.当前K线往前推直到找到阴线为止的最后一条阳线的开盘价与当前价差要超过百分之一
 4.当前K线往前就是阴线的话那当前K线的开盘价与当前价差要超过百分之1.5
 5.并且成交量要大于平均值
@@ -428,7 +428,7 @@ function checkCanBuy(records, ticker, ma, crossnum){
 	var ktypes = [4, 6, 7, 9, 10, 11, 12, 13, 14, 15];
     var nowticker = records[records.length-1];
     var manow = ma[ma.length-1];
-    if(crossnum > 0 && nowticker.Close > manow && ktypes.indexOf(nowticker.Type) != -1){
+    if(crossnum > 0 && (nowticker.Close/manow) >= 1.01 && ktypes.indexOf(nowticker.Type) != -1){
 		//满总前两个条件，判断后三个条件
 		Log("满总前两个条件，判断后三个条件");
 		var volumeok = false;
@@ -483,10 +483,29 @@ function checkCanBuy(records, ticker, ma, crossnum){
     return ret;
 }
 
+/**************************
+检测是否跌破止损线（防守线）
+1.防守线是持仓成本线（均价+交易费用）
+2.看当前价是否低于14日均线并且在防守线之下，如果是返回来真
+**************************/
+function checkBreakDefenseLine(tp, ticker, ma){
+	Log("检测是否跌破止损线（防守线）");
+	var ret = false;
+	var defenseline = _G(tp.Name+"_AvgPrice")*(1+tp.Args.BuyFee+tp.Args.BuyFee);
+	var maprice = ma[ma.length-1];
+	if(ticker.Last < maprice && ticker.Last < defenseline){
+		ret = true;
+		Log("检测是否跌破止损线（防守线）");
+	}
+	return ret;
+}
+ 
 /********************
 识别阴阳阴K线特征
-当前K线的最低价可能随时有可能低于14日均线，然后又升收盘，所以之前还没有确认出现过阴阳阴之前往前看一条K线
-之前确实出现过阴阳阴那就看当前信号
+1.当前K线或是判断K线就是最开始买入的K线时，返回为假，因为当前K线的价格会有波动，当前K线的最低价可能随时有可能低于14日均线，然后又升收盘，所以判断意义不大
+2.然后判断当前阴线收盘价是否低于14日均线，如果低于就继续往下查找阴阳阴形态
+3.如果后阴收盘价低于持仓均价，返回为真，
+4.如果阴阳阴形态存在并且后阴收盘价低于前阴收盘价,那返回为真
 ***********************/
 function identifyYinYangYin(tp, records, ma, crossnum){
 	Log("识别阴阳阴K线特征");
@@ -502,7 +521,7 @@ function identifyYinYangYin(tp, records, ma, crossnum){
 	}
     var nowticker = records[records.length-readid];
 	var firstbuy = _G(tp.Name+"_FirstBuyTS");
-	if(nowticker < firstbuy) return ret;
+	if(nowticker.Time == firstbuy) return ret;	//当前K线就是初次买入的K线，没有阴阳阴判断意义，退出返回为假
     var manow = ma[ma.length-readid];
     //首先判断K线的收盘价是否在14均线之下
     if(nowticker.Type < 0 && nowticker.Close < manow){
@@ -1163,9 +1182,9 @@ function BearMarketTactics(tp) {
 				//出现超过2%的顶部长上影线或是抛压深度，立即卖出
 				if(debug) Log("出现超过2%的顶部长上影线或是抛压深度，立即卖出。");
 				doInstantSell(tp, Account, Ticker);
-			}else if((Ticker.Last/avgPrice) <= 1.015 && (identifyDarkCloudCover(tp, Records) || identifyYinYangYin(tp, Records, MAArray, CrossNum))){
-				//如果在没有达到1.5%浮盈之前出现阴阳阴或是乌云压顶，那尽快进行止损
-				if(debug) Log("在没有达到1.5%浮盈之前出现阴阳阴或是乌云压顶，那尽快进行止损。");
+			}else if((Ticker.Last/avgPrice) <= 1.015 && (checkBreakDefenseLine(tp, Ticker, MAArray) || identifyDarkCloudCover(tp, Records) || identifyYinYangYin(tp, Records, MAArray, CrossNum))){
+				//如果在没有达到1.5%浮盈之前出现阴阳阴或是乌云压顶等出现止损信号，那尽快进行止损
+				if(debug) Log("在没有达到1.5%浮盈之前出现止损信号，那尽快进行止损。");
 				doInstantSell(tp, Account, Ticker);
 			}else if(_G(tp.Name+"_CanTargetProfitNum") > 0){
 				//正在操作的止盈还没有完成
