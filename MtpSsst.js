@@ -52,7 +52,6 @@ var StartTime = _D();	//策略启动时间
 var TickTimes = 0;		//刷新次数
 var ArgTables;		//已经处理好的用于显示的参数表，当参数更新时置空重新生成，以加快刷新速度
 var AccountTables;	//当前的账户信息表，如果当前已经有表，只要更新当前交易对，这样可以加快刷新速度，减少内存使用
-var CrossTime = 0;	//金叉之后程序刷新次数，死叉之后重置
 
 //取得交易所对像
 function getExchange(name){
@@ -428,6 +427,7 @@ function checkCanBuy(records, ticker, ma, crossnum){
 	var ktypes = [4, 6, 7, 9, 10, 11, 12, 13, 14, 15];
     var nowticker = records[records.length-1];
     var manow = ma[ma.length-1];
+	Log("nowticker.Close/manow",nowticker.Close/manow);
     if(crossnum > 0 && (nowticker.Close/manow) >= 1.01 && ktypes.indexOf(nowticker.Type) != -1){
 		//满总前两个条件，判断后三个条件
 		Log("满总前两个条件，判断后三个条件");
@@ -473,7 +473,7 @@ function checkCanBuy(records, ticker, ma, crossnum){
 		}
 		if(volumeok){
 			Log("满足成交量的条件，再来判断涨幅是否能达到条件");
-			if(fristticker.Time == nowticker.Time && nowticker.Close/fristticker.Open > 1.02 || fristticker.Time != nowticker.Time && (nowticker.Close/fristticker.Open > 1.015 || (nowticker.Close/records[records.length-crossnum].Open) > 1.015)){
+			if(fristticker.Time == nowticker.Time && nowticker.Close/fristticker.Open > 1.02 || fristticker.Time != nowticker.Time && (nowticker.Close/fristticker.Open > 1.015 || (nowticker.Close/records[records.length-crossnum].Open) > 1.015 || (nowticker.Close/manow) > 1.015)){
 				//符合买入条件
 				ret = true;
 				Log("符合买入条件");
@@ -1147,8 +1147,7 @@ function BearMarketTactics(tp) {
 			//没有持仓，可以考虑买入
 			if(_G(tp.Name+"_CanBuy")){
 				//尽量不要在金叉出现的第一时间进入，因为有可能是闪现的，后面又跑回去负值，如果这样的话一旦负值出现就会急售造成巨亏
-				CrossTime++;
-				if(CrossTime >=3 && checkCanBuy(Records, Ticker, MAArray, CrossNum) ){
+				if(CrossNum >=2 && checkCanBuy(Records, Ticker, MAArray, CrossNum) ){
 					if(debug) Log("当前没有建仓，满足建仓条件，准备操作买入操作。");
 					doBuy(tp, Account, Ticker, LastRecord.Time);
 				}else{
@@ -1229,8 +1228,6 @@ function BearMarketTactics(tp) {
 			_G(tp.Name+"_TargetProfitTimes", 0);
 			_G(tp.Name+"_CanBuy", 1);
 			_G(tp.Name+"_FirstBuyTS", 0);
-			//重置金叉刷新次数
-			if(CrossNum <= -2) CrossTime = 0;
 		}
 	}
 }
