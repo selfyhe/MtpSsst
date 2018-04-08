@@ -1181,7 +1181,7 @@ function BearMarketTactics(tp) {
 				//出现超过2%的顶部长上影线或是抛压深度，立即卖出
 				if(debug) Log("出现超过2%的顶部长上影线或是抛压深度，立即卖出。");
 				doInstantSell(tp, Account, Ticker);
-			}else if((Ticker.Last/avgPrice) <= 1.015 && (checkBreakDefenseLine(tp, Ticker, MAArray) || identifyDarkCloudCover(tp, Records) || identifyYinYangYin(tp, Records, MAArray, CrossNum))){
+			}else if((Ticker.Last/avgPrice) <= 1.015 && (identifyTopSellOffSignal(tp, Records) || checkBreakDefenseLine(tp, Ticker, MAArray) || identifyDarkCloudCover(tp, Records) || identifyYinYangYin(tp, Records, MAArray, CrossNum))){
 				//如果在没有达到1.5%浮盈之前出现阴阳阴或是乌云压顶等出现止损信号，那尽快进行止损
 				if(debug) Log("在没有达到1.5%浮盈之前出现止损信号，那尽快进行止损。");
 				doInstantSell(tp, Account, Ticker);
