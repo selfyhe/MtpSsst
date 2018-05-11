@@ -79,6 +79,7 @@ var StartTime = _D();	//策略启动时间
 var TickTimes = 0;		//刷新次数
 var ArgTables;		//已经处理好的用于显示的参数表，当参数更新时置空重新生成，以加快刷新速度
 var AccountTables;	//当前的账户信息表，如果当前已经有表，只要更新当前交易对，这样可以加快刷新速度，减少内存使用
+var LastCrossNum = 0;	//上一次的交叉数，用来判断当前是否发生了交叉转换
 var LastDeathCrossTime = 0;	//上一次死叉的时间
 var LastIdentifyMarket = 0; //上一次分析行情时间
 
@@ -504,6 +505,7 @@ function checkCanBuyKingArea2(tp, records, ticker, ema7, ema21, ma14, crossnum){
 	var ema7_king = ema7[ema7.length-crossnum];
 	var max_king = 0;
 	for(var i=2;i<=crossnum;i++){
+		if(i>=crossnum) break;
 		var maxprice=Math.max(max_king,records[records.length-i].Close);
 		if(maxprice>max_king){
 			max_king = maxprice;
@@ -555,9 +557,9 @@ function checkCanBuyKingArea2(tp, records, ticker, ema7, ema21, ma14, crossnum){
 	//排除一些不合理的情况
 	var signs = [-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, 2, 3, 5, 8, 100];
 	if(ret){
-		if(lastrecord.Close/lowprice >= 1.04 && lastrecord.Volume < records[records.length-crossnum].Volume*2 && thirdrecord.Close >= max_kingk123 && secondrecord.Close >= max_kingk123){
-			//持续下跌的行情下反弹已经超过4%，且连续上升没有回调过后续空间不大，已经回调过除外
-			Log("持续下跌的行情下反弹已经超过4%，成交量没有超过金叉点K线成交量的2倍且连续上升没有回调过后续空间不大，那就放弃。");
+		if(lastrecord.Close/lowprice >= 1.03 && lastrecord.Volume < records[records.length-crossnum].Volume*2 && thirdrecord.Close >= max_kingk123 && secondrecord.Close >= max_kingk123){
+			//持续下跌的行情下反弹已经超过3%，且连续上升没有回调过后续空间不大，已经回调过除外
+			Log("持续下跌的行情下反弹已经超过3%，成交量没有超过金叉点K线成交量的2倍且连续上升没有回调过后续空间不大，那就放弃。");
 			ret = false;
 		}else if(signs.indexOf(secondrecord.Type) != -1 && signs.indexOf(thirdrecord.Type) != -1 || Math.abs(secondrecord.Close-secondrecord.Open)/(secondrecord.High-secondrecord.Close) < 0.3 && Math.abs(thirdrecord.Close-thirdrecord.Open)/(thirdrecord.High-thirdrecord.Close) < 0.3){
 			//如果前面连续两条线都有抛压表现，那就放弃
@@ -571,7 +573,7 @@ function checkCanBuyKingArea2(tp, records, ticker, ema7, ema21, ma14, crossnum){
 		ret = false;
 	}
 	//设置防守线
-	if(ret) _G(tp.Name+"_StopLinePrice",lowprice);
+	if(ret) _G(tp.Name+"_StopLinePrice",secondrecord.Open);
 	return ret;
 }
 
@@ -604,6 +606,7 @@ function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 	var max_kingk123 = 0;
 	var max_kcrossnum = 0;
 	for(var i=0;i<=2;i++){
+		if(i>=crossnum) break;
 		var maxprice=Math.max(max_kingk123,records[records.length-crossnum+i].Close);
 		if(maxprice>max_kingk123){
 			max_kingk123 = maxprice;
@@ -633,13 +636,11 @@ function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 	var value1 = secondrecord.Close/ema7_king;
 	//前K开盘必须在14线之上，且当前有效升幅要超过金叉后三线价以上，且平均三条K线升幅不超过1个点
 	if(secondrecord.Open > ma14[ma14.length-2] && (lastrecord.Close-lowprice)/(max_kingk123-lowprice) > 0.6){
-		Log("1111111");
 		//必须连续两根阳线，且累计有效升幅超过1%，可以买入
 		if(secondrecord.Type > 0 && lastrecord.Close/secondrecord.Open >= 1.01){
 			Log("上一根是阳线，且当前也是阳线，累计有效升幅超过1%，可以买入");
 			ret = true;
 		}else if(thirdrecord.Type > 0 && secondrecord.Type > 0 && secondrecord.Close > thirdrecord.Close && lastrecord.Close > secondrecord.Close && value1 > 1.005 && value1 > ema7_king/lowprice){
-			Log("222222");
 			//连续阳升或是冲高回调后再回升超过60%
 			if(thirdrecord.Close >= max_kingk123 || (max_kingk123-seclowprice)/max_kingk123 >1.01 && (secondrecord.Close-seclowprice)/(max_kingk123-seclowprice) > 0.6){
 				Log("当前K线型态符合普通买入条件，可以买入");
@@ -659,8 +660,26 @@ function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 			ret = true;
 		}
 	}
+	//排除一些不合理的情况
+	var signs = [-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, 2, 3, 5, 8, 100];
+	if(ret){
+		if(lastrecord.Close/lowprice >= 1.05 && lastrecord.Volume < records[records.length-crossnum].Volume*2 && thirdrecord.Close >= max_kingk123 && secondrecord.Close >= max_kingk123){
+			//持续下跌的行情下反弹已经超过5%，且连续上升没有回调过后续空间不大，已经回调过除外
+			Log("持续下跌的行情下反弹已经超过5%，成交量没有超过金叉点K线成交量的2倍且连续上升没有回调过后续空间不大，那就放弃。");
+			ret = false;
+		}else if(signs.indexOf(secondrecord.Type) != -1 && signs.indexOf(thirdrecord.Type) != -1 || Math.abs(secondrecord.Close-secondrecord.Open)/(secondrecord.High-secondrecord.Close) < 0.3 && Math.abs(thirdrecord.Close-thirdrecord.Open)/(thirdrecord.High-thirdrecord.Close) < 0.3){
+			//如果前面连续两条线都有抛压表现，那就放弃
+			Log("前面连续两条线都有抛压表现，那就放弃。");
+			ret = false;
+		}
+	}
+	//如果交叉数为10之前，且之前连续阳升或是前面存在顶部抛压K线，那么就要做时间验证，必须要在后3分钟才可以买
+	if(ret && now < (lastrecord.Time+600000) && crossnum<=10 && lastrecord.Volume < records[records.length-crossnum].Volume && (thirdrecord.Close >= max_kingk123 || signs.indexOf(secondrecord.Type) != -1 || signs.indexOf(thirdrecord.Type) != -1)){
+		Log("当前K线是前10分钟，且前面的K线存在抛压信号K线，继续观察。");
+		ret = false;
+	}
 	//设置防守线
-	if(ret) _G(tp.Name+"_StopLinePrice",lowprice);
+	if(ret) _G(tp.Name+"_StopLinePrice",secondrecord.Open);
 	return ret;
 }
 
@@ -1985,12 +2004,10 @@ function checkBreakDefenseLine(tp){
 	Log("检测是否跌破止损线（防守线）");
 	var ret = false;
 	var defenseline = _G(tp.Name+"_StopLinePrice");
-	Log("_StopLinePrice",defenseline);
 	if(!defenseline) defenseline = _G(tp.Name+"_AvgPrice")*(1+tp.Args.BuyFee+tp.Args.SellFee);
 	var ma = tp.MAArray;
 	var ticker = tp.Ticker;
 	var maprice = ma[ma.length-1];
-	Log("if(",ticker.Last," < ",maprice," && ticker.Last < ",defenseline,"){");
 	if(ticker.Last < maprice && ticker.Last < defenseline){
 		ret = true;
 		Log("检测当前已经跌破止损线（防守线）");
@@ -2209,32 +2226,47 @@ function identifyShadowLine(tp){
  */
 function identifyTheMarket(tp){
 	//进入行情识别
+	Log("进入行情识别");
 	var market = _G(tp.Name+"_ConjunctureType");
 	var now = new Date().getTime();
 	//先做快速涨跌判断,只针对当前K线
 	var quickcheck = false;
+	var secondrecord = tp.Records[tp.Records.length-2];
 	var xrecord = tp.Records[tp.Records.length-Math.abs(tp.CrossNum)];
-	if(tp.CrossNum > 0 && (tp.LastRecord.High-tp.LastRecord.Low)/tp.LastRecord.High >= 0.1){
+	if(market != 1 && ((tp.LastRecord.High-tp.LastRecord.Low)/tp.LastRecord.High >= 0.1 || (secondrecord.High-tp.LastRecord.Low)/secondrecord.High >= 0.1)){
 		//当前K线快速下跌超过10%，行情转为恐慌出逃行情
 		Log("当前K线快速下跌超过10%，行情转为恐慌出逃行情");
 		MarketEnvironment = 0;
 		market = 1;
+		_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
 		quickcheck = true;
-	}else if(tp.CrossNum < 0 && (xrecord.High-tp.LastRecord.Low)/xrecord.High >= 0.1){
+	}else if(market != 2 && tp.CrossNum < -2 && (xrecord.High-tp.LastRecord.Low)/xrecord.High >= 0.1){
 		//死叉后连续下跌超过10%，行情转为持续下跌行情
 		Log("死叉后连续下跌超过10%，行情转为持续下跌行情");
 		MarketEnvironment = 0;
 		market = 2;
 		quickcheck = true;
-	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && tp.LastRecord.High/xrecord.Low >= 1.05){
-		//金叉后连续上涨超过5%，行情转为反弹上冲行情
-		Log("金叉后连续上涨超过5%，行情转为反弹上冲行情");
-		market = 5;
+	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && market == 2 && tp.LastRecord.High/xrecord.Low >= 1.05){
+		//金叉后连续上涨超过5%，行情转为底部修正行情
+		Log("持续下跌行情时金叉后连续上涨超过5%，行情转为底部修正行情");
+		market = 3;
 		quickcheck = true;
-	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && tp.LastRecord.High/tp.LastRecord.Low >= 1.05){
-		//当前K线快速拉涨超过5%，行情转为反弹上冲行情
-		Log("当前K线快速拉涨超过5%，行情转为反弹上冲行情");
+	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && market == 2 && tp.LastRecord.High/tp.LastRecord.Low >= 1.05){
+		//当前K线快速拉涨超过5%，行情转为底部修正行情
+		Log("持续下跌行情时当前K线快速拉涨超过5%，行情转为底部修正行情");
+		market = 3;
+		quickcheck = true;
+	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && market > 1 && market < 5 && tp.LastRecord.High/xrecord.Low >= 1.1){
+		//金叉后连续上涨超过5%，行情转为反弹上冲行情
+		Log("金叉后连续上涨超过10%，行情转为反弹上冲行情");
 		market = 5;
+		_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
+		quickcheck = true;
+	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && market > 1 && market < 5 && tp.LastRecord.High/tp.LastRecord.Low >= 1.1){
+		//当前K线快速拉涨超过10%，行情转为反弹上冲行情
+		Log("当前K线快速拉涨超过10%，行情转为反弹上冲行情");
+		market = 5;
+		_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
 		quickcheck = true;
 	}
 	if(quickcheck){
@@ -2253,44 +2285,64 @@ function identifyTheMarket(tp){
 	var crossnum = getEmaCrossNum(ema7, ema21);  
 	if(crossnum === 0) return market;	//在回测系统中读1小时K线只能读到14条，所以使得ema21数组为空，所以crossnum为0
 	var lastrecord = Records[Records.length-1];
-	var kingrecord = Records[Records.length-crossnum];
 	//处理小行情
 	if(MarketEnvironment == 0){
 		//如果当前是熊市行情，再判断小行情
-		if(crossnum >= 2 && lastrecord.High/kingrecord.Low > 1.02 && lastrecord.High/kingrecord.Low < 1.05 ){
-			market = 3; //底部修正行情
-		}else if(crossnum >= 12 || lastrecord.High/kingrecord.Low >= 1.05){
-			if(tp.Ticker.Last/kingrecord.Open > 1.4){
-				//连续上涨超过，进入牛市
-				MarketEnvironment = 1;
-				market = 0;
-			}else{
-				market = 5; //反弹上冲行情
+		if(crossnum > 0){
+			//根据金叉后的行情进行判断切换
+			var kingrecord = Records[Records.length-crossnum];
+			if(market == 2 && crossnum >= 2 && lastrecord.High/kingrecord.Low > 1.02 && lastrecord.High/kingrecord.Low < 1.05 ){
+				Log("持续下跌行情时当前K线快速拉涨超过2%，金叉后拉涨不超过5%，行情转为底部修正行情");
+				market = 3; //底部修正行情
+			}else if(market == 1){
+				Log("恐慌出逃行情回神之后进入持续下跌行情");
+				market = 2; 
+			}else if(crossnum >= 24 || lastrecord.High/kingrecord.Low >= 1.1){
+				if(tp.Ticker.Last/kingrecord.Open > 1.4){
+					//连续上涨超过，进入牛市
+					Log("金叉后连续拉涨超过40%，进入牛市行情");
+					MarketEnvironment = 1;
+					market = 0;
+				}else if(market != 5){
+					Log("金叉后连续拉涨超过10%或连续上涨期超过1天，进入反弹上冲行情");
+					market = 5; //反弹上冲行情
+					_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
+				}
 			}
 		}else{
-			market = 2; //持续下跌行情
+			//根据死叉后的行情进行判断切换
+			if(market != 2 && crossnum<=-24){
+				Log("死叉后连续下跌1天，行情转为持续下跌行情");
+				market = 2; //持续下跌行情
+			}
+			
 		}
 	}else{
 		//在牛市当中时
-		if(crossnum >= -2){
-			//找到上一个金叉当中的最高价
-			var knum = getLastAreaKnum(ema7, ema21, crossnum);
-			var max_king = 0;
-			for(var i=1;i<=knum;i++){
-				var maxprice=Math.max(max_king,records[records.length-i].High);
-				if(maxprice>max_king){
-					max_king = maxprice;
+		if(crossnum<0){
+			//根据死叉后的行情判断切换
+			if(crossnum >= -2){
+				//找到上一个金叉当中的最高价
+				var knum = getLastAreaKnum(ema7, ema21, crossnum);
+				var max_king = 0;
+				for(var i=1;i<=knum;i++){
+					var maxprice=Math.max(max_king,records[records.length-i].High);
+					if(maxprice>max_king){
+						max_king = maxprice;
+					}
 				}
-			}
-			if((max_king-tp.Ticker.Last)/max_king >= 0.2){
-				//从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情
+				if((max_king-tp.Ticker.Last)/max_king >= 0.2){
+					//从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情
+					Log("牛市时从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情");
+					MarketEnvironment = 0;
+					market = 2;
+				}
+			}else if(crossnum <= -24){
+				//持续下跌了24小时，没有形成金叉，转变为持续下跌行情
+				Log("牛市时持续下跌了24小时，没有形成金叉，转变为持续下跌行情");
 				MarketEnvironment = 0;
 				market = 2;
 			}
-		}else if(crossnum <= -24){
-			//持续下跌了24小时，没有形成金叉，转变为持续下跌行情
-			MarketEnvironment = 0;
-			market = 2;
 		}
 	}	
 	return market;
@@ -2477,18 +2529,46 @@ function checkCanTargetProfit(tp){
 			if(tp.CrossNum < 0) profit = 0.02; //抄底止盈点为2%
 			break;
 		case 3:	//底部修正
-			profit = 0.03;
+			profit = 0.02;
 			break;
 		case 4:	//盘桓储力
-			profit = 0.04;
+			//不建议操作止盈
 			break;
 		case 5:	//反弹上冲
-			profit = 0.05;
+			profit = 0.1;
 			break;
 	}
 	var lastsell = _G(tp.Name+"_LastSellPrice") ? _G(tp.Name+"_LastSellPrice") : _G(tp.Name+"_AvgPrice");
 	lastsell = lastsell * (1 + profit + tp.Args.BuyFee + tp.Args.SellFee);
 	if(tp.Ticker.Buy > lastsell){
+		ret = true;
+	}
+	return ret;
+}
+
+/**
+ * 检测在反弹上攻行情中是否可以平仓
+ * 只有在当前价比24小时最低价下跌超过5%的进候才可以平仓
+ * 在反弹上攻行情中不要轻易平仓被甩下车可能错过牛市或小牛行情的赚钱机会。
+ * @param {} tp
+ */
+function checkCanSellInGoodMarket(tp){
+	var ret = false;
+	var lastrecord = tp.LastRecord;
+	var records = tp.Records;
+	var limitts = new Date().getTime()- 24*60*60*1000;	//24小时之后的时间戳
+	var highprice = 0;
+	for(var i=1;i<records.length;i++){
+		var record = records[records.length - i];
+		if(record.Time < limitts) break;
+		var maxprice = Math.max(highprice, record.Close);
+		if(maxprice > highprice){
+			highprice = maxprice;
+		}
+	}
+	//判断是否符合条件
+	Log(highprice, lastrecord.Close, (highprice-lastrecord.Close)/highprice);
+	if((highprice-lastrecord.Close)/highprice >= 0.05){
 		ret = true;
 	}
 	return ret;
@@ -2613,9 +2693,6 @@ function doBuy(tp){
 		//买入操作完成。
 		Log("当交易对持仓成本",tp.TPInfo.CostTotal,"，限仓金额",balancelimit,"，账户余额",tp.Account.Balance,"，算出的可买数量只有",opAmount,"，已经无法继续买入，买入操作完成。");
 	}
-	
-	//在金叉买入时设置防守线
-	if(tp.CrossNum > 0) _G(tp.Name+"_StopLinePrice", tp.Records[tp.Records.length-tp.CrossNum-1].Low);
 	
 	//清空上一次卖出价格
 	if(_G(tp.Name+"_LastSellPrice")) _G(tp.Name+"_LastSellPrice",0);
@@ -2747,14 +2824,15 @@ function BearMarketTactics(tp) {
 	//根据当前的行情来决定操作
 	var Records = tp.Records;
 	var Ticker = tp.Ticker;
+	var SecondRecord = Records[Records.length-2];
 	var avgPrice = tp.TPInfo.AvgPrice;
 	var CType = _G(tp.Name+"_ConjunctureType");
 	if(tp.CrossNum > 0){
 		//金叉区域处理程序
-		if(debug) Log("当前上行行情，交叉数为",tp.CrossNum,"，当前K线类型为", tp.LastRecord.Type);
+		if(debug) Log("当前是",CONJUNCTURE_TYPE_NAMES[CType],"行情，交叉数为",tp.CrossNum,"，当前K线类型为", tp.LastRecord.Type);
 		if(tp.Account.Stocks <= tp.Args.MinStockAmount){
 			//判断上一次买入的时间，是否在金叉之内，如果是说明已经止盈完了，如果不是说明还没有买过
-			var kingxtime = tp.Records[tp.Records.length-tp.CrossNum].Time;
+			var kingxtime = Records[Records.length-tp.CrossNum].Time;
 			if(_G(tp.Name+"_FirstBuyTS") < kingxtime){	//金叉之后还没有建仓
 				//当前没有建仓，检测是否可以建仓
 				//不要在金叉出现的第一时间进入，因为有可能是闪现的，后面又跑回去负值，如果这样的话一旦负值出现就会急售造成巨亏
@@ -2775,8 +2853,8 @@ function BearMarketTactics(tp) {
 		}else if(_G(tp.Name+"_LastBuyArea") == 1){	//买在金叉
 			if(CType == 2){	//持续下跌行情
 				if(checkCanTargetProfit(tp)){ 
-					//在没有止盈操作之前，如果价格超过了成本价的1%之后进行首次止盈，保留胜利果实，因为熊市的短线反弹涨幅不会很高，追求更高频次交易。
-					if(debug) Log("在没有止盈操作之前，如果价格超过了成本价的1%之后进行首次止盈。");
+					//进行定点止盈，保住胜利果实
+					if(debug) Log("价格拉涨超过了定点止盈位，进行止盈操作。");
 					doTargetProfitSell(tp);
 				}else if(_G(tp.Name+"_CanTargetProfitNum") > 0){
 					//正在操作的止盈还没有完成
@@ -2787,11 +2865,11 @@ function BearMarketTactics(tp) {
 					if(debug) Log("前三个K线出现超过2%的顶部长上影线或是抛压深度，立即卖出。");
 					doInstantSell(tp);
 					_G(tp.Name+"_DoedTargetProfit",1);
-				}else if((Ticker.Buy/avgPrice) <= 1.02 && checkBreakDefenseLine(tp)){
-					//如果在没有达到2%浮盈之前出现止损信号，那尽快进行止损
-					if(debug) Log("在没有达到2%浮盈之前出现止损信号，那尽快进行止损。");
+				}else if((SecondRecord.Close/avgPrice) <= 1.01 && (checkBreakDefenseLine(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
+					//如果在没有达到1%浮盈之前出现止损信号，那尽快进行止损
+					if(debug) Log("在没有达到1%浮盈之前出现止损信号，那尽快进行止损。");
 					doInstantSell(tp);
-				}else if(((Ticker.Buy/avgPrice) >= 1.02) && (identifyTopSellOffSignal(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
+				}else if(((SecondRecord.Close/avgPrice) >= 1.01) && (identifyTopSellOffSignal(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
 					//写入信号发现的K线，不在同一个信号点多次操作止盈
 					var lastsignalts = _G(tp.Name+"_LastSignalTS");
 					if(lastsignalts === 0){
@@ -2823,8 +2901,8 @@ function BearMarketTactics(tp) {
 				}
 			}else if(CType == 3){	//底部修正行情
 				if(checkCanTargetProfit(tp)){ 
-					//在没有止盈操作之前，如果价格超过了成本价的3%之后进行首次止盈，保留胜利果实，因为熊市的短线反弹涨幅不会很高，追求更高频次交易。
-					if(debug) Log("在没有止盈操作之前，如果价格超过了成本价的3%之后进行首次止盈。");
+					//进行定点止盈，保住胜利果实
+					if(debug) Log("价格拉涨超过了定点止盈位，进行止盈操作。");
 					doTargetProfitSell(tp);
 				}else if(_G(tp.Name+"_CanTargetProfitNum") > 0){
 					//正在操作的止盈还没有完成
@@ -2835,11 +2913,11 @@ function BearMarketTactics(tp) {
 					if(debug) Log("前三个K线出现超过2%的顶部长上影线或是抛压深度，立即卖出。");
 					doInstantSell(tp);
 					_G(tp.Name+"_DoedTargetProfit",1);
-				}else if((Ticker.Buy/avgPrice) <= 1.03 && checkBreakDefenseLine(tp)){
-					//如果在没有达到3%浮盈之前出现止损信号，那尽快进行止损
-					if(debug) Log("在没有达到3%浮盈之前出现止损信号，那尽快进行止损。");
+				}else if((SecondRecord.Close/avgPrice) <= 1.02 && (checkBreakDefenseLine(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
+					//如果在没有达到2%浮盈之前出现止损信号，那尽快进行止损
+					if(debug) Log("在没有达到2%浮盈之前出现止损信号，那尽快进行止损。");
 					doInstantSell(tp);
-				}else if(((Ticker.Buy/avgPrice) >= 1.03) && (identifyTopSellOffSignal(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
+				}else if(((SecondRecord.Close/avgPrice) >= 1.02) && (identifyTopSellOffSignal(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
 					//写入信号发现的K线，不在同一个信号点多次操作止盈
 					var lastsignalts = _G(tp.Name+"_LastSignalTS");
 					if(lastsignalts === 0){
@@ -2870,7 +2948,7 @@ function BearMarketTactics(tp) {
 					if(debug) Log("当前已经建仓完成，继续观察行情。");
 				}
 			}else if(CType == 4){	//盘桓储力行情
-				if((Ticker.Buy/avgPrice) <= 1.02 && checkBreakDefenseLine(tp)){
+				if((SecondRecord.Close/avgPrice) <= 1.02 && checkBreakDefenseLine(tp)){
 					//如果在没有达到2%浮盈之前出现止损信号，那尽快进行止损
 					if(debug) Log("在没有达到2%浮盈之前出现止损信号，那尽快进行止损。");
 					doInstantSell(tp);
@@ -2886,36 +2964,48 @@ function BearMarketTactics(tp) {
 					if(debug) Log("当前已经建仓完成，继续观察行情。");
 				}
 			}else if(CType == 5){	//反弹上攻行情
+				/*反弹上攻行情要不要止盈有待继续论证
 				if(checkCanTargetProfit(tp)){ 
-					//在没有止盈操作之前，如果价格超过了成本价的5%之后进行首次止盈，保留胜利果实，因为熊市的短线反弹涨幅不会很高，追求更高频次交易。
-					if(debug) Log("在没有止盈操作之前，如果价格超过了成本价的5%之后进行首次止盈。");
+					//进行定点止盈，保住胜利果实
+					if(debug) Log("价格拉涨超过了定点止盈位，进行止盈操作。");
 					doTargetProfitSell(tp);
-				}else if(_G(tp.Name+"_CanTargetProfitNum") > 0){
+				}else */if(_G(tp.Name+"_CanTargetProfitNum") > 0){
 					//正在操作的止盈还没有完成
 					if(debug) Log("本次止盈操作还没有完成，还有",_G(tp.Name+"_CanTargetProfitNum"),"个币需要卖出，继续操作止盈。");
 					doTargetProfitSell(tp);
-				}else if((Ticker.Buy/avgPrice) <= 1.05 && checkBreakDefenseLine(tp)){
+				}else if((SecondRecord.Close/avgPrice) <= 1.05 && checkBreakDefenseLine(tp)){
 					//如果在没有达到5%浮盈之前出现止损信号，那尽快进行止损
 					if(debug) Log("在没有达到5%浮盈之前出现止损信号，那尽快进行止损。");
 					doInstantSell(tp);
 				}else if(tp.TPInfo.CostTotal+tp.Args.MinStockAmount*Ticker.Sell <= _G(tp.Name+"_BalanceLimit") && tp.Account.Balance > tp.Args.MinStockAmount*Ticker.Sell){
 					//有持仓，但是还有仓位看是否可以买入
-					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyKingArea(tp)){
-						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
-						if(doBuy(tp)) _G(tp.Name+"_LastBuyArea",1);
-					}else{
-						if(debug) Log("有持仓，但暂时不满足继续开仓条件，继续观察行情。");
-					}
+					if(_G(tp.Name+"_DoedTargetProfit") == 0){
+						if(checkCanBuyKingArea(tp)){
+							if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
+							if(doBuy(tp)) _G(tp.Name+"_LastBuyArea",1);
+						}else{
+							if(debug) Log("有持仓，但暂时不满足继续开仓条件，继续观察行情。");
+						}
+/*反弹上攻行情要不要止盈有待继续论证
+						}else{
+						//已经止盈过，看价格有没有回落到最后一次止盈价，如果有重置止盈标签可以在回升之后买入
+						if(tp.Ticker.Last <= _G(tp.Name+"_LastSellPrice")*0.99){
+							_G(tp.Name+"_DoedTargetProfit", 0); 
+						}
+*/					}
 				}else{
 					if(debug) Log("当前已经建仓完成，继续观察行情。");
 				}
 			}
 		}else if(_G(tp.Name+"_LastBuyArea") == 2){	//买在死叉
-			if(CType == 2 && tp.CrossNum >= 2){	//在持续下跌行情中，交叉数为2时进行止盈平仓
-				if(tp.Account.Stocks > tp.Args.MinStockAmount){
+			if(CType == 2){	//在持续下跌行情中，交叉数为2时进行止盈平仓
+				if(tp.CrossNum >= 2 && tp.Account.Stocks > tp.Args.MinStockAmount){
 					if(debug) Log("当前交叉数为",tp.CrossNum,"，在底部买入之后手上还有",tp.Account.Stocks,"个币，准备操作止盈平仓。");
 					doTargetProfitSell(tp);
 				}
+			}else{
+				//把原来买在死叉的标识改为金叉，才可以实现在金叉的管理
+				_G(tp.Name+"_LastBuyArea", 1);
 			}
 			
 		}
@@ -2924,13 +3014,24 @@ function BearMarketTactics(tp) {
 		if(tp.Account.Stocks > tp.Args.MinStockAmount){
 			//手中有货
 			if(_G(tp.Name+"_LastBuyArea") == 1){	//买在金叉
-				if((avgPrice-Ticker.Buy)/avgPrice <= 0.1){
-					if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，手上还有",tp.Account.Stocks,"个币，准备操作平仓出货。");
-					doInstantSell(tp);
+				if(CType == 5){
+					//当在反弹上攻行情时，就算是死叉出现，只要没有下跌超过24小时最高价5%时，不卖出手中的币，不被小震荡甩下车
+					if(checkCanSellInGoodMarket(tp)){
+						if(debug) Log("死叉后比24小时最高价已经下跌超过5%，手上还有",tp.Account.Stocks,"个币，准备操作平仓出货。");
+						doInstantSell(tp);
+					}else{
+						if(debug) Log("虽然已经死叉但比24小时最高价下跌还没超过5%，暂时不下车，继续观察行情。");
+					}
 				}else{
-					if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，币价发生急跌，跌到了成本线的90%，不能再卖转为恐慌出逃行情，继续观察行情。");
-					_G(tp.Name+"_LastBuyArea", 2);
-					_G(tp.Name+"_ConjunctureType", 1);
+					//只有在当前价高于成本价或者是下跌没超过10%的情况下才进行止盈，如果超过了10%不再操作，转为买在死叉并转为出逃行情，以解决恐慌出逃或是软件启动币有较大的价差时把币卖掉的情况
+					if((avgPrice-Ticker.Buy)/avgPrice <= 0.1){
+						if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，手上还有",tp.Account.Stocks,"个币，准备操作平仓出货。");
+						doInstantSell(tp);
+					}else{
+						if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，币价发生急跌，跌到了成本线的90%，不能再卖转为恐慌出逃行情，继续观察行情。");
+						_G(tp.Name+"_LastBuyArea", 2);
+						_G(tp.Name+"_ConjunctureType", 1);
+					}
 				}
 			}else{	//买在死叉
 				//抄底买入，要做两个判断卖出
@@ -3099,7 +3200,8 @@ function main() {
 			tp.EMAArray2 = TA.EMA(tp.Records,21);
 			tp.CrossNum = getEmaCrossNum(tp.EMAArray1, tp.EMAArray2);   
 			//设置上次死叉的时间
-			if(tp.CrossNum == -1 && LastDeathCrossTime != tp.LastRecord.Time) LastDeathCrossTime = tp.LastRecord.Time;
+			if(LastCrossNum > 0 && tp.CrossNum < 0 && LastDeathCrossTime != tp.LastRecord.Time) LastDeathCrossTime = tp.LastRecord.Time;
+			LastCrossNum = tp.CrossNum;
 			//识别当前K线类型并添加结果到K线数组当中
 			addTickerType(tp.Records);
 
