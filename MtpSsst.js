@@ -1105,8 +1105,17 @@ function checkCanBuyInDeathArea1(tp, records, ema7, ema21, ma14, crossnum){
     	}else if((secondrecord.Open-lastrecord.Close)/secondrecord.Open >= 0.4){
     		Log("两根K线已经连续下跌超过40%，进入极度恐慌状态，连续买入抄底");
     		ret = true;
+    	}else if((lastrecord.Close-Math.min(secondrecord.Low,lastrecord.Low))/(Math.max(secondrecord.High,lastrecord.High)-lastrecord.Low) >= 0.2){
+    		Log("进入恐慌出逃之后已经超过回升20%，开始回稳连续买入抄底");
+    		ret = true;
     	}else if((_G(tp.Name+"_LastBuyPrice")-lastrecord.Close)/_G(tp.Name+"_LastBuyPrice") > 0.05){
     		Log("当前价比上一次买入价再下降5%，买入抄底");
+    		ret = true;
+    	}
+    }else if(_G(tp.Name+"_LastBuyTS") >= secondrecord.Time){
+    	//已经回升超过10%的范围
+    	if((lastrecord.Close-Math.min(secondrecord.Low,lastrecord.Low))/(Math.max(secondrecord.High,lastrecord.High)-lastrecord.Low) >= 0.2){
+    		Log("进入恐慌出逃之后已经超过回升20%，开始回稳连续买入抄底");
     		ret = true;
     	}
     }
@@ -2529,7 +2538,7 @@ function checkCanTargetProfit(tp){
 	switch(ctype){
 		case 1:	//恐慌出逃
 		    var lastrecord = tp.LastRecord;
-		    var secondrecord = records[records.length-2];
+		    var secondrecord = tp.Records[tp.Records.length-2];
 		    var high = Math.max(secondrecord.High, lastrecord.High);
 		    var low = Math.min(secondrecord.Low, lastrecord.Low);
 			if((lastrecord.Close-low)/(high-low) < 0.8){
@@ -2674,11 +2683,14 @@ function getOperateFineness(tp, type){
 	return parseInt(totalamount/getlen);
 }
 
-/************
+/**
  * 操作买入交易
+ * 根据买入操作类型分别进行限价和市价交易，交易的数量按照买入粒度规则，交易金额不超出限仓金额和当前可买金额限定
  * @param {} tp
+ * @param {} type 买入操作类型，1为限价交易，-1为市价交易
+ * @return {}
  */
-function doBuy(tp){
+function doBuy(tp, type){
 	var ret = false;
 	//计算操作粒度（一次的操作数量）1为卖单，2为买单
 	var operatefineness = getOperateFineness(tp, 1);
@@ -2692,8 +2704,15 @@ function doBuy(tp){
 	var opAmount = canbuy > operatefineness? operatefineness : canbuy;
 	opAmount = _N(opAmount, tp.Args.StockDecimalPlace);
 	if(opAmount > tp.Args.MinStockAmount){
-		Log("准备操作买入，限仓金额",balancelimit,"，还可买金额",canpay,"，可买数量",canbuy,"，本次买入数量",opAmount,"，当前卖1价格",tp.Ticker.Sell); 
-		var orderid = tp.Exchange.Buy(tp.Ticker.Sell,opAmount);
+		var orderid = 0;
+		if(type == -1){
+			var buyfee = opAmount*tp.Ticker.Sell;
+			Log("准备操作市价买入，限仓金额",balancelimit,"，还可买金额",canpay,"，可买数量",canbuy,"，本次下单金额",buyfee,"，本次预期买入数量",opAmount,"，预期成交价格",tp.Ticker.Sell); 
+			orderid = tp.Exchange.Buy(-1,buyfee);
+		}else{
+			Log("准备操作买入，限仓金额",balancelimit,"，还可买金额",canpay,"，可买数量",canbuy,"，本次买入数量",opAmount,"，当前卖1价格",tp.Ticker.Sell); 
+			orderid = tp.Exchange.Buy(tp.Ticker.Sell,opAmount);
+		}
 		if(orderid) {
 			_G(tp.Name+"_LastOrderId",orderid);
 			_G(tp.Name+"_OperatingStatus", OPERATE_STATUS_BUY);	
@@ -2795,7 +2814,7 @@ function BullMarketTactics(tp) {
 			//只要当前价在14日均线之上就可以买入
 			if(tp.LastRecord.Close > tp.MAArray[tp.MAArray.length-1]){
 				if(debug) Log("当前上行行情，交叉数为",tp.CrossNum,"，当前还有仓位并且也满足开仓条件，准备操作买入操作。");
-				doBuy(tp);
+				doBuy(tp, 1);
 			}else{
 				if(debug) Log("当前上行行情，交叉数为",tp.CrossNum,"，当前还有仓位，但当前没有达到开仓条件，继续观察行情。");
 			}
@@ -2834,7 +2853,7 @@ function BullMarketTactics(tp) {
 function BearMarketTactics(tp) {
 	//初始化系统对像
 	var debug = tp.Args.Debug;
-	if(debug) Log("启动熊市短线策略，现在进行行情数据的读取和分析。");
+	if(debug) Log("启动熊市短线策略，当前交叉数为",tp.CrossNum,"，现在进行行情数据的读取和分析。");
 	
 	//根据当前的行情来决定操作
 	var Records = tp.Records;
@@ -2853,7 +2872,7 @@ function BearMarketTactics(tp) {
 				//不要在金叉出现的第一时间进入，因为有可能是闪现的，后面又跑回去负值，如果这样的话一旦负值出现就会急售造成巨亏
 				if(checkCanBuyKingArea(tp)){
 					if(debug) Log("当前没有建仓，满足建仓条件，准备操作买入操作。");
-					if(doBuy(tp)){
+					if(doBuy(tp, 1)){
 						_G(tp.Name+"_LastBuyArea",1);	//设置买入位置标识为金叉
 						_G(tp.Name+"_DoedTargetProfit",0);	//重置止盈操作标识
 					}
@@ -2907,7 +2926,7 @@ function BearMarketTactics(tp) {
 					//有持仓，但是还有仓位看是否可以买入
 					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyKingArea(tp)){
 						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
-						if(doBuy(tp)) _G(tp.Name+"_LastBuyArea",1);
+						if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",1);
 					}else{
 						if(debug) Log("有持仓，但暂时不满足继续开仓条件，继续观察行情。");
 					}
@@ -2955,7 +2974,7 @@ function BearMarketTactics(tp) {
 					//有持仓，但是还有仓位看是否可以买入
 					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyKingArea(tp)){
 						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
-						if(doBuy(tp)) _G(tp.Name+"_LastBuyArea",1);
+						if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",1);
 					}else{
 						if(debug) Log("有持仓，但暂时不满足继续开仓条件，继续观察行情。");
 					}
@@ -2971,7 +2990,7 @@ function BearMarketTactics(tp) {
 					//有持仓，但是还有仓位看是否可以买入
 					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyKingArea(tp)){
 						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
-						if(doBuy(tp)) _G(tp.Name+"_LastBuyArea",1);
+						if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",1);
 					}else{
 						if(debug) Log("有持仓，但暂时不满足继续开仓条件，继续观察行情。");
 					}
@@ -2997,7 +3016,7 @@ function BearMarketTactics(tp) {
 					if(_G(tp.Name+"_DoedTargetProfit") == 0){
 						if(checkCanBuyKingArea(tp)){
 							if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
-							if(doBuy(tp)) _G(tp.Name+"_LastBuyArea",1);
+							if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",1);
 						}else{
 							if(debug) Log("有持仓，但暂时不满足继续开仓条件，继续观察行情。");
 						}
@@ -3013,9 +3032,12 @@ function BearMarketTactics(tp) {
 				}
 			}
 		}else if(_G(tp.Name+"_LastBuyArea") == 2){	//买在死叉
-			if(CType == 2){	//在持续下跌行情中，交叉数为2时进行止盈平仓
+			if(CType == 1){	//在恐慌出逃行情下买入的货，回稳平仓
+				if(debug) Log("当价格恐慌爆跌后回归理性，从-1回升到正叉，可以操作平仓。");
+				doInstantSell(tp);
+			}else if(CType == 2){	//在持续下跌行情中，交叉数为2时进行止盈平仓
 				if(tp.CrossNum >= 2 && tp.Account.Stocks > tp.Args.MinStockAmount){
-					if(debug) Log("当前交叉数为",tp.CrossNum,"，在底部买入之后手上还有",tp.Account.Stocks,"个币，准备操作止盈平仓。");
+					if(debug) Log("在底部买入之后手上还有",tp.Account.Stocks,"个币，准备操作止盈平仓。");
 					doTargetProfitSell(tp);
 				}
 			}else{
@@ -3052,7 +3074,7 @@ function BearMarketTactics(tp) {
 				if((CType == 1 || CType == 2)  && checkCanTargetProfit(tp)){
 					if(debug) Log("抄底后当前价格回升到止盈点，操作止盈。");
 					doTargetProfitSell(tp);
-				}else if(CType == 1 && (tp.Ticker.Buy-Math.min(secondrecord.Low,lastrecord.Low))/(Math.max(secondrecord.High,lastrecord.High)-lastrecord.Low) >= 0.9 && tp.Ticker.Buy > avgPrice){
+				}else if(CType == 1 && tp.CrossNum<-1 &&(tp.Ticker.Buy-Math.min(SecondRecord.Low,tp.LastRecord.Low))/(Math.max(SecondRecord.High,tp.LastRecord.High)-tp.LastRecord.Low) >= 0.9 && tp.Ticker.Buy > avgPrice){
 					if(debug) Log("当价格恐慌爆跌后回归理性，回升到当前价格的9成左右且超过成本价，操作平仓。");
 					doInstantSell(tp);
 				}else if(CType > 1 && Ticker.Buy <= _G(tp.Name+"_StopLinePrice")){
@@ -3062,7 +3084,7 @@ function BearMarketTactics(tp) {
 					//有持仓，但是还有仓位看是否可以买入
 					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyDeathArea(tp)){
 						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
-						if(doBuy(tp)) _G(tp.Name+"_LastBuyArea",2);	
+						if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",2);	
 					}else{
 						if(debug) Log("有持仓，但暂时不满足继续开仓条件，继续观察行情。");
 					}
@@ -3087,7 +3109,13 @@ function BearMarketTactics(tp) {
 				//当前没有建仓，检测是否可以在底部建仓
 				if(checkCanBuyDeathArea(tp)){
 					if(debug) Log("当前没有建仓，交叉数为",tp.CrossNum,"，满足底部建仓条件，准备操作买入操作。");
-					if(doBuy(tp)) _G(tp.Name+"_LastBuyArea",2);				
+					var ret = false;
+					if(CType == 1){
+						ret = doBuy(tp, -1);
+					}else{
+						ret = doBuy(tp, 1);
+					}
+					if(ret) _G(tp.Name+"_LastBuyArea",2);				
 				}else{
 					if(debug) Log("当前没有建仓，交叉数为",tp.CrossNum,"，但当前没有达到底部建仓条件，继续观察行情。");
 					if(_G(tp.Name+"_LastBuyArea")) _G(tp.Name+"_LastBuyArea",0);	
