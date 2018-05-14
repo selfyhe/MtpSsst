@@ -1089,19 +1089,24 @@ function checkCanBuyInDeathArea2(tp, records, ema7, ema21, ma14, crossnum){
 
 /*********************************
 在熊市恐慌出逃行情下，检测是否可以抄底买入
+恐慌出逃引发的踩踏事情导致多头期货合约和多头杠杆借贷纷纷爆仓和平仓，使得币价一下子无法控制，往往爆跌20~50%
 *********************************/
 function checkCanBuyInDeathArea1(tp, records, ema7, ema21, ma14, crossnum){
 	Log("在熊市恐慌出逃行情下，检测是否可以抄底买入");
     var ret = false;
-    //当前K线或是前一K线到现在跌幅超过10%，每次下跌2%买入一次
+    //当前K线或是前一K线到现在跌幅超过10%，每次下跌5%买入一次
     var lastrecord = tp.LastRecord;
+    if(lastrecord.Type>0) return ret;
     var secondrecord = records[records.length-2];
-    if(lastrecord.Close/lastrecord.Open > 1.1 || lastrecord.Close/secondrecord.Open > 1.1 ){
-    	if(_G(tp.Name+"_LastBuyTS") >= secondrecord.Time && lastrecord.Close/_G(tp.Name+"_LastBuyPrice") > 1.02){
-    		Log("当前价比上一次买入价再下降2%，买入抄底");
-    		ret = true;
-    	}else if(_G(tp.Name+"_LastBuyTS") < secondrecord.Time){
+    if((lastrecord.Open-lastrecord.Close)/lastrecord.Open > 0.1 || (secondrecord.Open-lastrecord.Close)/secondrecord.Open > 0.1 ){
+    	if(_G(tp.Name+"_LastBuyTS") < secondrecord.Time){
     		Log("在进入恐慌出逃行情后第一次买入，买入抄底");
+    		ret = true;
+    	}else if((secondrecord.Open-lastrecord.Close)/secondrecord.Open >= 0.4){
+    		Log("两根K线已经连续下跌超过40%，进入极度恐慌状态，连续买入抄底");
+    		ret = true;
+    	}else if((_G(tp.Name+"_LastBuyPrice")-lastrecord.Close)/_G(tp.Name+"_LastBuyPrice") > 0.05){
+    		Log("当前价比上一次买入价再下降5%，买入抄底");
     		ret = true;
     	}
     }
@@ -2523,7 +2528,17 @@ function checkCanTargetProfit(tp){
 	var profit = 0.01;	//默认盈利点为1%
 	switch(ctype){
 		case 1:	//恐慌出逃
-			profit = 0.08;
+		    var lastrecord = tp.LastRecord;
+		    var secondrecord = records[records.length-2];
+		    var high = Math.max(secondrecord.High, lastrecord.High);
+		    var low = Math.min(secondrecord.Low, lastrecord.Low);
+			if((lastrecord.Close-low)/(high-low) < 0.8){
+				//当回升超过跌幅的80%之后才开始止盈
+				profit = 0.8;
+			}else{
+				//后续止盈频点为2%
+				profit = 0.02;
+			}
 			break;
 		case 2:	//持续下跌
 			if(tp.CrossNum < 0) profit = 0.02; //抄底止盈点为2%
@@ -2694,7 +2709,7 @@ function doBuy(tp){
 		Log("当交易对持仓成本",tp.TPInfo.CostTotal,"，限仓金额",balancelimit,"，账户余额",tp.Account.Balance,"，算出的可买数量只有",opAmount,"，已经无法继续买入，买入操作完成。");
 	}
 	
-	//清空上一次卖出价格
+	//清空上一次卖出价格，以使下次止盈准确计算
 	if(_G(tp.Name+"_LastSellPrice")) _G(tp.Name+"_LastSellPrice",0);
 	
 	return ret;
@@ -3034,13 +3049,10 @@ function BearMarketTactics(tp) {
 					}
 				}
 			}else{	//买在死叉
-				//抄底买入，要做两个判断卖出
-				//1.当前价是否突破了防守线
-				//2.买入后每涨1%，如果做一次止盈卖出
 				if((CType == 1 || CType == 2)  && checkCanTargetProfit(tp)){
-					if(debug) Log("抄底后当前价格回升到上一次卖出/买入后价格的8%以上，操作止盈。");
+					if(debug) Log("抄底后当前价格回升到止盈点，操作止盈。");
 					doTargetProfitSell(tp);
-				}else if(CType == 1 && (tp.Ticker.Buy-lastrecord.Low)/(secondrecord.High-lastrecord.Low) >= 0.9 && tp.Ticker.Buy > avgPrice){
+				}else if(CType == 1 && (tp.Ticker.Buy-Math.min(secondrecord.Low,lastrecord.Low))/(Math.max(secondrecord.High,lastrecord.High)-lastrecord.Low) >= 0.9 && tp.Ticker.Buy > avgPrice){
 					if(debug) Log("当价格恐慌爆跌后回归理性，回升到当前价格的9成左右且超过成本价，操作平仓。");
 					doInstantSell(tp);
 				}else if(CType > 1 && Ticker.Buy <= _G(tp.Name+"_StopLinePrice")){
