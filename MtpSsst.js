@@ -13,7 +13,7 @@
 熊市主要有以下几种行情分类：
 1.恐慌出逃，牛市之顶泡沫破裂，所有的人恐慌抛出手中的货，指数急速下跌。在一条K线创出超过10%的大幅下跌，等人们稍为镇定一下之后，一般会回弹80%以上，再进入持续下跌形态
 2.持续下跌，空头攻势凶猛，多头节节败退，偶现弱反弹，但也无力支撑，下跌幅度大于上涨幅度
-3.底部修正，到达一定的低部之后，多空心里较有底了，都想通过大幅震荡短线获益，上涨和下跌幅度接近，幅度都比较大
+3.震荡整理，到达一定的低部之后，多空心里较有底了，都想通过大幅震荡短线获益，上涨和下跌幅度接近，幅度都比较大
 4.盘桓储力，多空双方的观点接近一致，都认为底部已经形成，空头不想放出，头还想继续低部吸筹不放价。幅度都非常小。
 5.反弹上攻，多头力量已经形成，大幅上攻，上涨幅度大于下跌幅度。
 
@@ -26,7 +26,7 @@ ArgsJson	策略参数JSON内容	JSON内容为以下多个交易对的数组JSON	
 参数	描述	类型	默认值
 ExchangeName	交易所名称	字符串型(string)
 TradePairName	交易对名称	字符串型(string)	
-ConjunctureType	行情类型	值范围：0牛市行情,1恐慌出逃,2持续下跌,3底部修正,4盘桓储力,5反弹上攻	数字型(number)	2
+ConjunctureType	行情类型	值范围：0牛市行情,1恐慌出逃,2持续下跌,3震荡整理,4盘桓储力,5反弹上攻	数字型(number)	2
 BalanceLimit	买入金额数量限制	数字型(number)	300
 NowCoinPrice	当前持仓价格		数字型(number)	0
 BuyFee	平台买入手续费		数字型(number)	0.002
@@ -51,7 +51,7 @@ var OPERATE_STATUS_SELL_INSTANT = 2;
 //单次止盈卖出账户币数比例
 var TARGET_PROFIT_PERCENT = 0.3;	//每次止盈卖出持仓总量的比例
 //定义行情类型
-var CONJUNCTURE_TYPE_NAMES = ["牛市行情","恐慌出逃","持续下跌","底部修正","盘桓储力","反弹上攻"];				
+var CONJUNCTURE_TYPE_NAMES = ["牛市行情","恐慌出逃","持续下跌","震荡整理","盘桓储力","反弹上攻"];				
 
 
 //全局变量定义
@@ -461,7 +461,7 @@ function checkCanBuyKingArea(tp){
 		case 2:	//持续下跌行情
 	    	if(tp.CrossNum >=5) ret = checkCanBuyKingArea2(tp, tp.Records, tp.Ticker, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
 			break;
-		case 3:	//底部修正行情
+		case 3:	//震荡整理行情
 			ret = checkCanBuyKingArea3(tp, tp.Records, tp.Ticker, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
 			break;
 		case 4:	//盘桓储力行情
@@ -579,8 +579,8 @@ function checkCanBuyKingArea2(tp, records, ticker, ema7, ema21, ma14, crossnum){
 
 
 /*******************************
-检测是否可以在熊市底部修正的行情当中做买入
-底部修正，到达一定的低部之后，多空心里较有底了，都想通过大幅震荡短线获益，上涨和下跌幅度接近，幅度都比较大
+检测是否可以在熊市震荡整理的行情当中做买入
+震荡整理，到达一定的低部之后，多空心里较有底了，都想通过大幅震荡短线获益，上涨和下跌幅度接近，幅度都比较大
 1.这个区域是持续下跌到一定程度之后是多空分歧最大的区域，但势力均等，在一个较大的震荡箱体里面相互拼杀，小游资在跟随底吸高抛做波段
 2.这段区域上涨的空间会比持续下跌大，把空间限制在6%比较合现
 3.这个区域如果多头挣脱震荡箱体，那就有可能冲高带来小牛，如果空头胜利将继续下跌，进入持续下跌或是横盘整理
@@ -588,7 +588,7 @@ function checkCanBuyKingArea2(tp, records, ticker, ema7, ema21, ma14, crossnum){
 2）可以去除较多的排除性条件
 *******************************/
 function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
-	Log("检测当前是否可以在底部修正行情中金叉区域买入");
+	Log("检测当前是否可以在震荡整理行情中金叉区域买入");
 	var ret = false;
 	var lastrecord = records[records.length-1];
 	if(lastrecord.Type < 0) return ret;
@@ -778,7 +778,7 @@ function checkCanBuyDeathArea(tp){
 			break;
 		case 2:	//持续下跌行情
 			//if(tp.CrossNum <= -2) ret = checkCanBuyInDeathArea2(tp, tp.Records, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
-		case 3:	//底部修正行情
+		case 3:	//震荡整理行情
 			//if(tp.CrossNum <= -2) ret = checkCanBuyInDeathArea3(tp, tp.Records, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
 		case 5:	//反弹上攻行情
 			//if(tp.CrossNum <= -2) ret = checkCanBuyInDeathArea5(tp, tp.Records, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
@@ -1449,10 +1449,10 @@ function checkCanBuyInDeathArea2(tp, records, ema7, ema21, ma14, crossnum){
 }
 
 /*********************************
-在熊市底部修正行情下，检测是否可以抄底买入
+在熊市震荡整理行情下，检测是否可以抄底买入
 *********************************/
 function checkCanBuyInDeathArea3(tp, records, ema7, ema21, ma14, crossnum){
-	Log("在熊市底部修正行情下，检测是否可以抄底买入");
+	Log("在熊市震荡整理行情下，检测是否可以抄底买入");
     var ret = false;
     //取得当前死叉内价格最低的K线
     var lastrecord = tp.LastRecord;
@@ -2231,6 +2231,85 @@ function identifyShadowLine(tp){
 }
 
 /**
+ * 识别横盘震荡行情
+ * 在15分钟K线数据情况下，往回找出21条K线满足以下条件：
+ * 1.是否有波动超过3%以上的K线，如果有，是否在头部或是尾部如果是继续，如果不是返回为假
+ * 2.判断阳线的比例超过4成但不超过6成
+ * 3.排除前后2根K线总的波动也不超过3%
+ * @param {} tp
+ */
+function identifyTransverseConcussion(tp){
+	var ret = false;
+	var high = 0;
+	var low = 0;
+	var yangknum = 0;
+	for(var i = 2;i<=29;i++){
+		var record = tp.Records[tp.Records.length - i];
+		if((record.High-record.Low)/record.High > 0.015 || record.High/record.Low > 1.015){
+        	if(i > 2 && i < 29){
+			    return ret;
+            }
+		}
+		var max = Math.max(high, record.High);
+		if(max > high) high = max;
+        if(low === 0) {
+            low = record.Low;
+        }else{
+		    var min = Math.min(low, record.Low);
+		    if(min < low) low = min;
+        }
+        if(record.Close>record.Open) yangknum++;
+	}
+	Log("K线幅度high=",high,"low=",low,"high/low=",high/low);
+	if((high-low)/high > 0.03 || high/low > 1.03){
+		return ret;
+	}else{
+		//如果阳阴线比例失衡也不算
+		var yangkrate = yangknum / 28;
+		if(yangkrate.toFixed(1) < 0.4 || yangkrate.toFixed(1) > 0.6){
+			Log("阳线比例=",yangkrate);
+			return ret;
+		}
+	}
+	//再计算一下21个k线的7日均线值比均差比例
+	var ema7 = tp.EMAArray1;
+	var numbers = [];
+	for(var i=29;i>=2;i--){
+		numbers.push(ema7[ema7.length - i]);
+	}
+    var avg = 0;  
+    var sum = 0;  
+	high = 0;
+	low = 0;
+    for(var i=0;i<numbers.length;i++){  
+        sum += numbers[i];  
+		var max = Math.max(high, numbers[i]);
+		if(max > high) high = max;
+        if(low === 0) {
+            low = record.Low;
+        }else{
+		    var min = Math.min(low, numbers[i]);
+		    if(min < low) low = min;
+        }
+    }  
+    Log("7线幅度：high=",high,"low=",low,"high/low=",high/low);
+	if((high-low)/high > 0.005 || high/low > 1.005){
+		return ret;
+	}
+    avg = sum / numbers.length;  
+    sum = 0;  
+    for(var i=0;i<numbers.length;i++){  
+        sum += Math.abs((numbers[i] - avg) / avg);  
+    }  
+    var val = sum / numbers.length;  
+    Log("val=",val);
+	if(val < 0.005){
+		ret = true;
+	}
+	return ret;
+}
+
+/**
  * 识别当前行情
  * 1.验证程序4小时做一次
  * 2.以4小时行情K线作为分析依据
@@ -2240,60 +2319,87 @@ function identifyShadowLine(tp){
  */
 function identifyTheMarket(tp){
 	//进入行情识别
-	Log("进入行情识别");
-	var market = _G(tp.Name+"_ConjunctureType");
+	var oldmarket = _G(tp.Name+"_ConjunctureType");
+	var newmarket = -1;
 	var now = new Date().getTime();
 	//先做快速涨跌判断,只针对当前K线
 	var quickcheck = false;
 	var secondrecord = tp.Records[tp.Records.length-2];
 	var xrecord = tp.Records[tp.Records.length-Math.abs(tp.CrossNum)];
-	if(market != 1 && ((tp.LastRecord.High-tp.LastRecord.Low)/tp.LastRecord.High >= 0.1 || (secondrecord.High-tp.LastRecord.Low)/secondrecord.High >= 0.1)){
+	if(oldmarket != 1 && ((tp.LastRecord.High-tp.LastRecord.Low)/tp.LastRecord.High >= 0.1 || (secondrecord.High-tp.LastRecord.Low)/secondrecord.High >= 0.1)){
 		//当前K线快速下跌超过10%，行情转为恐慌出逃行情
 		Log("当前K线快速下跌超过10%，行情转为恐慌出逃行情");
 		MarketEnvironment = 0;
-		market = 1;
+		newmarket = 1;
 		_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
 		quickcheck = true;
-	}else if(market != 2 && tp.CrossNum < -2 && (xrecord.High-tp.LastRecord.Low)/xrecord.High >= 0.1){
-		//死叉后连续下跌超过10%，行情转为持续下跌行情
-		Log("死叉后连续下跌超过10%，行情转为持续下跌行情");
-		MarketEnvironment = 0;
-		market = 2;
-		quickcheck = true;
-	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && market == 2 && tp.LastRecord.High/xrecord.Low >= 1.05){
-		//金叉后连续上涨超过5%，行情转为底部修正行情
-		Log("持续下跌行情时金叉后连续上涨超过5%，行情转为底部修正行情");
-		market = 3;
-		quickcheck = true;
-	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && market == 2 && tp.LastRecord.High/tp.LastRecord.Low >= 1.05){
-		//当前K线快速拉涨超过5%，行情转为底部修正行情
-		Log("持续下跌行情时当前K线快速拉涨超过5%，行情转为底部修正行情");
-		market = 3;
-		quickcheck = true;
-	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && market > 1 && market < 5 && tp.LastRecord.High/xrecord.Low >= 1.1){
-		//金叉后连续上涨超过5%，行情转为反弹上冲行情
-		Log("金叉后连续上涨超过10%，行情转为反弹上冲行情");
-		market = 5;
-		_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
-		quickcheck = true;
-	}else if(MarketEnvironment == 0 && tp.CrossNum > 0 && market > 1 && market < 5 && tp.LastRecord.High/tp.LastRecord.Low >= 1.1){
-		//当前K线快速拉涨超过10%，行情转为反弹上冲行情
-		Log("当前K线快速拉涨超过10%，行情转为反弹上冲行情");
-		market = 5;
-		_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
-		quickcheck = true;
+	}else if(MarketEnvironment == 0 && tp.CrossNum < -2 && oldmarket != 2){
+		if(oldmarket != 3 && (xrecord.High-tp.LastRecord.Low)/xrecord.High > 0.05 && (xrecord.High-tp.LastRecord.Low)/xrecord.High < 0.1){
+			//死叉后连续跌幅没有超过10%以内，行情为震荡整理行情
+			Log("死叉后连续跌幅没有超过10%以内，行情为震荡整理行情");
+			MarketEnvironment = 0;
+			newmarket = 3;
+			quickcheck = true;
+		}else if((xrecord.High-tp.LastRecord.Low)/xrecord.High >= 0.1){
+			//死叉后连续下跌超过10%，行情转为持续下跌行情
+			Log("死叉后连续下跌超过10%，行情转为持续下跌行情");
+			MarketEnvironment = 0;
+			newmarket = 2;
+			quickcheck = true;
+		}
+	}else if(MarketEnvironment == 0 && tp.CrossNum > 0){
+		//找到最低价
+		var lowprice = tp.LastRecord.Close;
+		for(var i=2;i<=14+tp.CrossNum;i++){
+			var minprice=Math.min(lowprice,tp.Records[tp.Records.length-i].Close);
+			if(minprice<lowprice){
+				lowprice = minprice;
+			}
+		}
+		if(oldmarket == 2 && tp.LastRecord.High/lowprice >= 1.03 && tp.LastRecord.High/lowprice < 1.1){
+			Log("持续下跌后连续上涨超过3%，行情转为震荡整理行情");
+			newmarket = 3;
+			quickcheck = true;
+		}else if(oldmarket == 4 && tp.LastRecord.High/lowprice >= 1.05 && tp.LastRecord.High/lowprice < 1.1){
+			Log("横盘震荡后连续上涨超过5%，行情转为震荡整理行情");
+			newmarket = 3;
+			quickcheck = true;
+		}else if(tp.LastRecord.High/lowprice < 1.1){
+			if(oldmarket == 2 && tp.LastRecord.High/tp.LastRecord.Low >= 1.03){
+				Log("持续下跌行情中当前K线快速拉涨超过3%，行情转为震荡整理行情");
+				newmarket = 3;
+				quickcheck = true;
+			}else if(oldmarket == 4 && tp.LastRecord.High/tp.LastRecord.Low >= 1.04 ){
+				Log("横盘震荡行情中当前K线快速拉涨超过4%，行情转为震荡整理行情");
+				newmarket = 3;
+				quickcheck = true;
+			}
+		}else if(oldmarket > 1 && oldmarket < 5 && tp.LastRecord.High/lowprice >= 1.1){
+			Log("金叉后连续上涨超过10%，行情转为反弹上冲行情");
+			newmarket = 5;
+			_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
+			quickcheck = true;
+		}else if(oldmarket > 1 && oldmarket < 5 && tp.LastRecord.High/tp.LastRecord.Low >= 1.1){
+			Log("当前K线快速拉涨超过10%，行情转为反弹上冲行情");
+			newmarket = 5;
+			_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
+			quickcheck = true;
+		}
 	}
 	if(quickcheck){
 		LastIdentifyMarket = now;
 	}
 	
+	var market = newmarket === -1 ? oldmarket : newmarket;
 	//做完简单的快速验证如果没有匹配，再做1小时一次的验证
 	var hourts = 60*60*1000;
-	if(now < LastIdentifyMarket + hourts ) return market;
+	if(now < LastIdentifyMarket + hourts ){
+		return market;
+	}
 	//通过频率验证
 	LastIdentifyMarket = now;
 	//以4小时K线为分析依据
-	var Records = _C(tp.Exchange.GetRecords, PERIOD_H1);
+	var Records = _C(exchange.GetRecords, PERIOD_H1);
 	var ema7 = TA.EMA(Records,7);
 	var ema21 = TA.EMA(Records,21);
 	var crossnum = getEmaCrossNum(ema7, ema21);  
@@ -2302,34 +2408,46 @@ function identifyTheMarket(tp){
 	//处理小行情
 	if(MarketEnvironment == 0){
 		//如果当前是熊市行情，再判断小行情
+        var hp = identifyTransverseConcussion(tp);
 		if(crossnum > 0){
 			//根据金叉后的行情进行判断切换
 			var kingrecord = Records[Records.length-crossnum];
-			if(market == 2 && crossnum >= 2 && lastrecord.High/kingrecord.Low > 1.02 && lastrecord.High/kingrecord.Low < 1.05 ){
-				Log("持续下跌行情时当前K线快速拉涨超过2%，金叉后拉涨不超过5%，行情转为底部修正行情");
-				market = 3; //底部修正行情
-			}else if(market == 1){
+			if(!hp && lastrecord.High/kingrecord.Low < 1.1 ){
+				Log("转入上涨，涨幅不超过10%，行情转为震荡整理行情");
+				newmarket = 3; //震荡整理行情
+			}else if(oldmarket == 1){
 				Log("恐慌出逃行情回神之后进入持续下跌行情");
-				market = 2; 
+				newmarket = 2; 
 			}else if(crossnum >= 24 || lastrecord.High/kingrecord.Low >= 1.1){
 				if(tp.Ticker.Last/kingrecord.Open > 1.4){
 					//连续上涨超过，进入牛市
 					Log("金叉后连续拉涨超过40%，进入牛市行情");
 					MarketEnvironment = 1;
-					market = 0;
-				}else if(market != 5){
+					newmarket = 0;
+				}else if(oldmarket != 5 && (lastrecord.High/kingrecord.Low >= 1.1 || crossnum >= 24 && lastrecord.High/kingrecord.Low >= 1.08)){
 					Log("金叉后连续拉涨超过10%或连续上涨期超过1天，进入反弹上冲行情");
-					market = 5; //反弹上冲行情
+					newmarket = 5; //反弹上冲行情
 					_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
 				}
+			}else if(hp){
+				Log("过往7小时内行情显示横盘，进入盘桓储力行情");
+				newmarket = 4;				
 			}
 		}else{
 			//根据死叉后的行情进行判断切换
-			if(market != 2 && crossnum<=-24){
-				Log("死叉后连续下跌1天，行情转为持续下跌行情");
-				market = 2; //持续下跌行情
+			var deathrecord = Records[Records.length-Math.abs(crossnum)];
+			if(deathrecord){
+				if(crossnum<=-12 && (deathrecord.Open-lastrecord.Close)/deathrecord.Open >= 0.3 || (deathrecord.Open-lastrecord.Close)/deathrecord.Open >= 0.1){
+					Log("死叉后连续下跌半天，行情转为持续下跌行情");
+					newmarket = 2; //持续下跌行情
+				}else if(!hp && (crossnum>-12 && (deathrecord.Open-lastrecord.Close)/deathrecord.Open < 0.1)){
+					Log("死叉后连续下跌但还没有超过半天且跌幅没超过10%，为持续震荡整理行情");
+					newmarket = 3; //震荡整理行情
+				}else if(hp){
+					Log("过往7小时内行情显示横盘，进入盘桓储力行情");
+					newmarket = 4;				
+				}	
 			}
-			
 		}
 	}else{
 		//在牛市当中时
@@ -2345,22 +2463,29 @@ function identifyTheMarket(tp){
 						max_king = maxprice;
 					}
 				}
-				if((max_king-tp.Ticker.Last)/max_king >= 0.2){
+				if((max_king-tp.Ticker.Last)/max_king >= 0.05 && (max_king-tp.Ticker.Last)/max_king <= 0.2){
+					//从最高价下跌大于5%但没有超过20%，进入熊市的持续下跌行情
+					Log("牛市时从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情");
+					MarketEnvironment = 0;
+					newmarket = 3;
+				}else if((max_king-tp.Ticker.Last)/max_king >= 0.2){
 					//从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情
 					Log("牛市时从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情");
 					MarketEnvironment = 0;
-					market = 2;
+					newmarket = 2;
 				}
 			}else if(crossnum <= -24){
 				//持续下跌了24小时，没有形成金叉，转变为持续下跌行情
 				Log("牛市时持续下跌了24小时，没有形成金叉，转变为持续下跌行情");
 				MarketEnvironment = 0;
-				market = 2;
+				newmarket = 2;
 			}
 		}
 	}	
+	market = newmarket === -1 ? oldmarket : newmarket;
 	return market;
 }
+
 
 //处理卖出成功之后数据的调整
 function changeDataForSell(tp,order){
@@ -2552,7 +2677,7 @@ function checkCanTargetProfit(tp){
 		case 2:	//持续下跌
 			if(tp.CrossNum < 0) profit = 0.02; //抄底止盈点为2%
 			break;
-		case 3:	//底部修正
+		case 3:	//震荡整理
 			profit = 0.02;
 			break;
 		case 4:	//盘桓储力
@@ -2933,7 +3058,7 @@ function BearMarketTactics(tp) {
 				}else{
 					if(debug) Log("当前已经建仓完成，继续观察行情。");
 				}
-			}else if(CType == 3){	//底部修正行情
+			}else if(CType == 3){	//震荡整理行情
 				if(checkCanTargetProfit(tp)){ 
 					//进行定点止盈，保住胜利果实
 					if(debug) Log("价格拉涨超过了定点止盈位，进行止盈操作。");
