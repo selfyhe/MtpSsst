@@ -83,6 +83,7 @@ var LastCrossNum = 0;	//上一次的交叉数，用来判断当前是否发生�
 var LastDeathCrossTime = 0;	//上一次死叉的时间
 var LastIdentifyMarket = 0; //上一次分析行情时间
 var LastChangeStopLine = 0;	//上一次调整止损线时间
+var LastKInUpwardTrend = {"inut":false,"st":0};	//当前K线是否是上升趋势
 
 //取得交易所对像
 function getExchange(name){
@@ -755,7 +756,7 @@ function checkCanBuyKingArea5(tp, records, ticker, ema7, ema21, ma14, crossnum){
 		return ret;
 	}
 	//再以1小时K线为分析依据
-	var Records = _C(exchange.GetRecords, PERIOD_H1);
+	var Records = _C(tp.Exchange.GetRecords, PERIOD_H1);
 	var ema7 = TA.EMA(Records,7);
 	var ema21 = TA.EMA(Records,21);
 	var crossnum = getEmaCrossNum(ema7, ema21);  
@@ -2022,6 +2023,60 @@ function checkCanBuyInDeathArea5(tp, records, ema7, ema21, ma14, crossnum){
     return ret; 
 }
 
+/**
+ * 从时K线上来判断当前是否还处在向上的趋势
+ * @param {} tp
+ * @return {}
+ */
+function checkInUpwardTrend(tp){
+	var ret = false;
+	var Records = _C(tp.Exchange.GetRecords, PERIOD_H1);
+	if(LastKInUpwardTrend.st == Records[Records.length - 1].Time) return LastKInUpwardTrend.inut;
+	
+	var ema7 = TA.EMA(Records,7);
+	var ema21 = TA.EMA(Records,21);
+	var crossnum = getEmaCrossNum(ema7, ema21); 
+    if(crossnum<0) {
+    	Log("交叉数不足无法判断趋势");
+		LastKInUpwardTrend.st = Records[Records.length - 1].Time;
+		LastKInUpwardTrend.inut = ret;
+    	return ret; 
+    }
+	var upnum = 0;
+	var downnum = 0;
+	var knum = crossnum;
+	if(knum < 14){
+		var klen = Math.abs(getLastAreaKnum(ema7, ema21, crossnum));
+		klen += knum-1; 
+		var lowprice = {"price":ema7[ema7.length-1],"id":1};
+        for(var i=2;i<=klen;i++){
+            var minprice = Math.min(lowprice.price, ema7[ema7.length-i]);
+            if(minprice < lowprice.price){
+                lowprice.price = minprice;
+                lowprice.id = i;
+            }
+        }
+        knum = lowprice.id;
+	}
+	for(var i=2;i<=knum;i++){
+		if(ema7[ema7.length-1]>ema7[ema7.length-i]){
+			upnum++;
+		}else{
+			downnum++;
+		}
+	}
+	if(upnum/knum > 0.7){
+		ret = true;
+		Log("当前处于上行趋势");
+	}else{
+		Log("当前处于下行趋势");
+	}
+	LastKInUpwardTrend.st = Records[Records.length - 1].Time;
+	LastKInUpwardTrend.inut = ret;
+	return ret;
+}
+
+
 /**************************
 检测是否跌破止损线（防守线）
 1.防守线是当前K线往前推两根K线的开盘价
@@ -2035,6 +2090,7 @@ function checkBreakDefenseLine(tp){
 	var ma = tp.MAArray;
 	var ticker = tp.Ticker;
 	var maprice = ma[ma.length-1];
+	//Log("if(",ticker.Last," < ",maprice," && ticker.Last < ",defenseline,"){");
 	if(ticker.Last < maprice && ticker.Last < defenseline){
 		ret = true;
 		Log("检测当前已经跌破止损线（防守线）");
@@ -2410,7 +2466,7 @@ function identifyTheMarket(tp){
 	//通过频率验证
 	LastIdentifyMarket = now;
 	//再以1小时K线为分析依据
-	var Records = _C(exchange.GetRecords, PERIOD_H1);
+	var Records = _C(tp.Exchange.GetRecords, PERIOD_H1);
 	var ema7 = TA.EMA(Records,7);
 	var ema21 = TA.EMA(Records,21);
 	var crossnum = getEmaCrossNum(ema7, ema21);  
@@ -2478,34 +2534,38 @@ function identifyTheMarket(tp){
 		}
 	}else{
 		//在牛市当中时
-		if(crossnum<0){
-			//根据死叉后的行情判断切换
-			if(crossnum >= -2){
-				//找到上一个金叉当中的最高价
-				var knum = getLastAreaKnum(ema7, ema21, crossnum);
-				var max_king = 0;
-				for(var i=1;i<=knum;i++){
-					var maxprice=Math.max(max_king,records[records.length-i].High);
-					if(maxprice>max_king){
-						max_king = maxprice;
-					}
+		if(crossnum < -24){
+			//死叉后24小时还没有下跌超过5%，直接转入震荡整理行情，说明行情回落得很慢
+			Log("死叉后24小时还没有下跌超过5%，直接转入震荡整理行情");
+			MarketEnvironment = 0;
+			newmarket = 3;
+		}else{
+			//找到上一个金叉当中的最高价，判断价格的回落情况
+			//在小时K线上死叉是时间要比较久的，但为了急时逃顶，就算是在正叉出现了20%以上的回落就要逃离了。
+			var knum = crossnum;
+			if(crossnum<0){
+				knum = getLastAreaKnum(ema7, ema21, crossnum);
+			}
+			var max_king = 0;
+			for(var i=1;i<=knum;i++){
+				var maxprice=Math.max(max_king,Records[Records.length-i].High);
+				if(maxprice>max_king){
+					max_king = maxprice;
 				}
-				if((max_king-tp.Ticker.Last)/max_king >= 0.05 && (max_king-tp.Ticker.Last)/max_king <= 0.2){
-					//从最高价下跌大于5%但没有超过20%，进入熊市的持续下跌行情
-					Log("牛市时从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情");
-					MarketEnvironment = 0;
-					newmarket = 3;
-				}else if((max_king-tp.Ticker.Last)/max_king >= 0.2){
-					//从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情
-					Log("牛市时从最高价下跌20%，且带来了死叉，进入熊市的持续下跌行情");
-					MarketEnvironment = 0;
-					newmarket = 2;
-				}
-			}else if(crossnum <= -24){
-				//持续下跌了24小时，没有形成金叉，转变为持续下跌行情
-				Log("牛市时持续下跌了24小时，没有形成金叉，转变为持续下跌行情");
+			}
+			if((max_king-tp.Ticker.Last)/max_king >= 0.2){
+				//从最高价下跌20%，还未在小时K线上带来了死叉，进入熊市的持续下跌行情
+				Log("牛市时从最高价下跌20%，还未在小时K线上带来了死叉，但风险很高了，转入持续下跌行情逃离");
 				MarketEnvironment = 0;
 				newmarket = 2;
+			}else if(crossnum<-1 && crossnum >= -24){
+				//死叉24条K线以内还没有回落超过20%，说明行情回落得不急，是震荡下行
+				if((max_king-tp.Ticker.Last)/max_king >= 0.05 && (max_king-tp.Ticker.Last)/max_king <= 0.2){
+					//从最高价下跌大于5%但没有超过20%，进入震荡整理行情行情
+					Log("牛市时从最高价下跌大于5%但没有超过20%，进入震荡整理行情行情");
+					MarketEnvironment = 0;
+					newmarket = 3;
+				}
 			}
 		}
 	}	
@@ -3033,9 +3093,9 @@ function BearMarketTactics(tp) {
 	var SecondRecord = Records[Records.length-2];
 	var avgPrice = tp.TPInfo.AvgPrice;
 	var CType = _G(tp.Name+"_ConjunctureType");
+	if(debug) Log("当前是",CONJUNCTURE_TYPE_NAMES[CType],"行情，交叉数为",tp.CrossNum,"，当前K线类型为", tp.LastRecord.Type);
 	if(tp.CrossNum > 0){
 		//金叉区域处理程序
-		if(debug) Log("当前是",CONJUNCTURE_TYPE_NAMES[CType],"行情，交叉数为",tp.CrossNum,"，当前K线类型为", tp.LastRecord.Type);
 		if(tp.Account.Stocks <= tp.Args.MinStockAmount){
 			//判断上一次买入的时间，是否在金叉之内，如果是说明已经止盈完了，如果不是说明还没有买过
 			var kingxtime = Records[Records.length-tp.CrossNum].Time;
@@ -3076,7 +3136,11 @@ function BearMarketTactics(tp) {
 					if(debug) Log("前三个K线出现超过2%的顶部长上影线或是抛压深度，立即卖出。");
 					doInstantSell(tp);
 					_G(tp.Name+"_DoedTargetProfit",1);
-				}else if((SecondRecord.Close/avgPrice) <= 1.01 && (checkBreakDefenseLine(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp)) || _G(tp.Name+"_DoedTargetProfit") && identifyTopSellOffSignal(tp)){
+				}else if((SecondRecord.Close/avgPrice) <= 1.01 && !checkInUpwardTrend(tp) && (checkBreakDefenseLine(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
+					//如果在之前已经有过止盈，那就可以继续关注逃顶信号
+					if(debug) Log("之前止盈后价格回落并再次触发逃顶信号，那尽快进行止损。");
+					doInstantSell(tp);
+				}else if((SecondRecord.Close/avgPrice) <= 1.01 && _G(tp.Name+"_DoedTargetProfit") && identifyTopSellOffSignal(tp)){
 					//如果在没有达到1%浮盈之前出现止损信号，那尽快进行止损
 					if(debug) Log("在没有达到1%浮盈之前出现止损信号，那尽快进行止损。");
 					doInstantSell(tp);
@@ -3125,9 +3189,13 @@ function BearMarketTactics(tp) {
 					if(debug) Log("前三个K线出现超过2%的顶部长上影线或是抛压深度，立即卖出。");
 					doInstantSell(tp);
 					_G(tp.Name+"_DoedTargetProfit",1);
-				}else if((SecondRecord.Close/avgPrice) <= 1.02 && (checkBreakDefenseLine(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp)) || _G(tp.Name+"_DoedTargetProfit") && identifyTopSellOffSignal(tp)){
+				}else if((SecondRecord.Close/avgPrice) <= 1.02 && !checkInUpwardTrend(tp) && (checkBreakDefenseLine(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
 					//如果在没有达到2%浮盈之前出现止损信号，那尽快进行止损
 					if(debug) Log("在没有达到2%浮盈之前出现止损信号，那尽快进行止损。");
+					doInstantSell(tp);
+				}else if((SecondRecord.Close/avgPrice) <= 1.02 && _G(tp.Name+"_DoedTargetProfit") && identifyTopSellOffSignal(tp)){
+					//如果在之前已经有过止盈，那就可以继续关注逃顶信号
+					if(debug) Log("之前止盈后价格回落并再次触发逃顶信号，那尽快进行止损。");
 					doInstantSell(tp);
 				}else if((SecondRecord.Close/avgPrice) >= 1.02 && (identifyTopSellOffSignal(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
 					//写入信号发现的K线，不在同一个信号点多次操作止盈
@@ -3176,7 +3244,7 @@ function BearMarketTactics(tp) {
 					if(debug) Log("当前已经建仓完成，继续观察行情。");
 				}
 			}else if(CType == 5){	//反弹上攻行情
-				if((SecondRecord.Close/avgPrice) <= 1.02 && (checkBreakDefenseLine(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
+				if((SecondRecord.Close/avgPrice) <= 1.02 && !checkInUpwardTrend(tp) && (checkBreakDefenseLine(tp) || identifyDarkCloudCover(tp) || identifyYinYangYin(tp))){
 					//如果在没有达到2%浮盈之前出现止损信号，那尽快进行止损
 					if(debug) Log("在没有达到2%浮盈之前出现止损信号，那尽快进行止损。");
 					doInstantSell(tp);
@@ -3234,10 +3302,14 @@ function BearMarketTactics(tp) {
 						if(debug) Log("虽然已经死叉但比24小时最高价下跌还没超过5%，暂时不下车，继续观察行情。");
 					}
 				}else{
-					//只有在当前价高于成本价或者是下跌没超过10%的情况下才进行止盈，如果超过了10%不再操作，转为买在死叉并转为出逃行情，以解决恐慌出逃或是软件启动币有较大的价差时把币卖掉的情况
+					//只有在当前价高于成本价或者是下跌没超过10%的情况下才进行止损，如果超过了10%不再操作，转为买在死叉并转为出逃行情，以解决恐慌出逃或是软件启动币有较大的价差时把币卖掉的情况
 					if((avgPrice-Ticker.Buy)/avgPrice <= 0.1){
-						if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，手上还有",tp.Account.Stocks,"个币，准备操作平仓出货。");
-						doInstantSell(tp);
+						if(CType == 3 && checkInUpwardTrend(tp)){
+							Log("当前进入死叉，交叉数为",tp.CrossNum,"，手上还有",tp.Account.Stocks,"个币，但当前依然处于上升趋势暂不平仓");
+						}else{
+							if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，手上还有",tp.Account.Stocks,"个币，准备操作平仓出货。");
+							doInstantSell(tp);
+						}
 					}else{
 						if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，币价发生急跌，跌到了成本线的90%，不能再卖转为恐慌出逃行情，继续观察行情。");
 						_G(tp.Name+"_LastBuyArea", 2);
