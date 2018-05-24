@@ -2520,7 +2520,7 @@ function identifyTheMarket(tp){
 			//根据死叉后的行情进行判断切换
 			var deathrecord = Records[Records.length-Math.abs(crossnum)];
 			if(deathrecord){
-				if(crossnum<=-12 && (deathrecord.Open-lastrecord.Close)/deathrecord.Open >= 0.3 || (deathrecord.Open-lastrecord.Close)/deathrecord.Open >= 0.1){
+				if(crossnum<=-12 && (deathrecord.Open-lastrecord.Close)/deathrecord.Open >= 0.03 || (deathrecord.Open-lastrecord.Close)/deathrecord.Open >= 0.1){
 					Log("死叉后连续下跌半天，行情转为持续下跌行情");
 					newmarket = 2; //持续下跌行情
 				}else if(!hp && (crossnum>-12 && (deathrecord.Open-lastrecord.Close)/deathrecord.Open < 0.1)){
@@ -3291,30 +3291,25 @@ function BearMarketTactics(tp) {
 	}else{
 		//死叉区域处理程序
 		if(tp.Account.Stocks > tp.Args.MinStockAmount){
-			//手中有货
+			//手中有货，如果超过10%跌幅有可能是软件刚开启
 			if(_G(tp.Name+"_LastBuyArea") == 1){	//买在金叉
-				if(CType == 5){
-					//当在反弹上攻行情时，就算是死叉出现，只要没有下跌超过24小时最高价5%时，不卖出手中的币，不被小震荡甩下车
-					if(checkCanSellInGoodMarket(tp)){
-						if(debug) Log("死叉后比24小时最高价已经下跌超过5%，手上还有",tp.Account.Stocks,"个币，准备操作平仓出货。");
-						doInstantSell(tp);
+				var downrate = (avgPrice-Ticker.Buy)/avgPrice;
+				//只有在当前价高于成本价或者是下跌没超过10%的情况下才进行止损，如果超过了10%不再操作，转为买在死叉并转为出逃行情，以解决恐慌出逃或是软件启动币有较大的价差时把币卖掉的情况
+				if(downrate <= 0.1){
+					if(CType == 5 && !checkCanSellInGoodMarket(tp)){
+						if(debug) Log("反弹上攻行情虽然已经死叉但比24小时最高价下跌还没超过5%，暂时不下车，继续观察行情。");
+					}else if(CType == 4 && downrate < 0.02){ //盘桓整理行情时出现死叉,只要不跌破2%不卖出
+						if(debug) Log("盘桓整理行情时出现死但跌幅不超过2%，继续观察行情。");
+					}else if(CType == 3 && checkInUpwardTrend(tp)){
+						if(debug) Log("震荡整理行情时出现死但当前依然处于上升趋势暂不平仓");
 					}else{
-						if(debug) Log("虽然已经死叉但比24小时最高价下跌还没超过5%，暂时不下车，继续观察行情。");
+						if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，手上还有",tp.Account.Stocks,"个币，准备操作平仓出货。");
+						doInstantSell(tp);
 					}
 				}else{
-					//只有在当前价高于成本价或者是下跌没超过10%的情况下才进行止损，如果超过了10%不再操作，转为买在死叉并转为出逃行情，以解决恐慌出逃或是软件启动币有较大的价差时把币卖掉的情况
-					if((avgPrice-Ticker.Buy)/avgPrice <= 0.1){
-						if(CType == 3 && checkInUpwardTrend(tp)){
-							Log("当前进入死叉，交叉数为",tp.CrossNum,"，手上还有",tp.Account.Stocks,"个币，但当前依然处于上升趋势暂不平仓");
-						}else{
-							if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，手上还有",tp.Account.Stocks,"个币，准备操作平仓出货。");
-							doInstantSell(tp);
-						}
-					}else{
-						if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，币价发生急跌，跌到了成本线的90%，不能再卖转为恐慌出逃行情，继续观察行情。");
-						_G(tp.Name+"_LastBuyArea", 2);
-						_G(tp.Name+"_ConjunctureType", 1);
-					}
+					if(debug) Log("当前死叉已经出现，交叉数为",tp.CrossNum,"，币价发生急跌，跌到了成本线的90%，不能再卖转为恐慌出逃行情，继续观察行情。");
+					_G(tp.Name+"_LastBuyArea", 2);
+					_G(tp.Name+"_ConjunctureType", 1);
 				}
 			}else{	//买在死叉
 				if((CType == 1 || CType == 2)  && checkCanTargetProfit(tp)){
