@@ -438,6 +438,63 @@ function getEmaCrossNum(emaarray1,emaarray2){
     return crossNum;
 }
 
+/**
+ * 取得24小时的平均K线的成交量
+ * 虽然Ticker有个总成交量，但很多交易所实现不一样，还是自己写一个
+ * @param {} records 为15分钟K线
+ */
+function getAvgVolumeIn24Hour(records){
+	var len = 96;	//15分钟K线每小时4条，4*24=96
+	if(records.length < 96) len = records.length;
+	var sum = 0;
+	for(var i=1;i<=len;i++){
+		sum += records[records.length - i].Volume;
+	}
+	return sum/len;
+}
+
+/**
+ * 找到死叉区域的最低价K线的最低价
+ * @param {} records	//不管是多少分钟的K线
+ * @param {} crossnum	//不管是在金叉还是在死叉
+ * @return {}
+ */
+function getLowPriceInDeathArea(records, crossnum){
+	var lowprice = records[records.length-1].Close;
+	var klen = Math.abs(crossnum);
+	if(crossnum>0) klen += 14;
+	for(var i=2;i<=klen;i++){
+		var minprice=Math.min(lowprice,records[records.length-i].Close);
+		if(minprice<lowprice){
+			lowprice = minprice;
+		}
+	}
+	return lowprice;
+}
+
+/**
+ * 找到金叉区域的最高价
+ * @param {} records	//不管是多少分钟的K线
+ * @param {} crossnum	//不管是在金叉还是在死叉
+ * @param {} ema7
+ * @param {} ema21
+ * @return {}
+ */
+function getHighPriceInGoldenArea(records, crossnum, ema7, ema21){
+	var knum = crossnum;
+	if(crossnum<0){
+		knum = getLastAreaKnum(ema7, ema21, crossnum);
+	}
+	var max_king = 0;
+	for(var i=1;i<=knum;i++){
+		var maxprice=Math.max(max_king,records[records.length-i].High);
+		if(maxprice>max_king){
+			max_king = maxprice;
+		}
+	}
+	return max_king;
+}
+
 /***
  * 识别当前K线类型并添加结果到K线数组当中
  * @param {} records
@@ -451,7 +508,7 @@ function addTickerType(records){
 /**************************
 检测当前是否可以在金叉区域买入
 **************************/
-function checkCanBuyKingArea(tp){
+function checkCanBuyGoldenArea(tp){
 	Log("检测当前是否可以在金叉区域买入");
     var ret = false;
 	//根据当前行情选择操作方式
@@ -464,119 +521,16 @@ function checkCanBuyKingArea(tp){
 			//持续下跌行情不建议金叉后买入，因为往往会在金叉后1~2条K线内就下继续跌
 			break;
 		case 3:	//震荡整理行情
-	    	ret = checkCanBuyKingArea3(tp, tp.Records, tp.Ticker, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
+	    	ret = checkCanBuyGoldenArea3(tp, tp.Records, tp.Ticker, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
 			break;
 		case 4:	//盘桓储力行情
-			ret = checkCanBuyKingArea4(tp, tp.Records, tp.Ticker, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
+			ret = checkCanBuyGoldenArea4(tp, tp.Records, tp.Ticker, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
 			break;
 		case 5:	//反弹上攻行情
-			ret = checkCanBuyKingArea5(tp, tp.Records, tp.Ticker, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
+			ret = checkCanBuyGoldenArea5(tp, tp.Records, tp.Ticker, tp.EMAArray1, tp.EMAArray2, tp.MAArray, tp.CrossNum);
 			break;
 	}	
     return ret;
-}
-
-/*******************************
-检测是否可以在熊市持续下跌的行情当中做买入
-持续下跌行情，空头攻势凶猛，多头节节败退，偶现弱反弹，但也无力支撑，下跌幅度大于上涨幅度
-1.在空头占优势的情况下，偶尔出现多头发力爆拉，但也在1~4条K线之内必然出现爆跌，所以不能在交叉数为5之前的时候买入，绝大多数会买在高点，亏得很惨
-2.为了防止在金叉过程当中突然出现大单卖出瞬间产生的死叉后反正现像造成错误买入损失，不在上一个死叉信号发生的15分钟内进行买入操作
-3.在交叉数大于5之后才考虑买入，基础要求当前K线必须是阳线，前K开盘必须在14线之上，且当前有效升幅要超过金叉后三线升幅的8成以上
-1）连续两根阳线，且累计有效升幅超过1.5%，时间也在后3分钟，可以买入
-2）连续三根阳线，且价格屡创新高，前K收盘价高于金叉7线价0.5%，且大于金叉7线到最低价的距离，可以买入
-3）第一条K线经过了不超过0.5%的小幅下跌之后，开始了大幅拉升，连续两条K线升幅超过1%，前K收盘价高于金叉7线价0.5%，且当前价已经超过前K收盘价，可以买入
-3）三个阳线跳空高开，主力进场，可以买入
-4.排除一些不合理的情况，同时要对一些情况进行时间验证，以确保更高成功率。
-*******************************/
-function checkCanBuyKingArea2(tp, records, ticker, ema7, ema21, ma14, crossnum){
-	Log("检测当前是否可以在持续下跌行情中金叉区域买入");
-	var ret = false;
-	if(crossnum < 5) return ret;
-	var lastrecord = records[records.length-1];
-	if(lastrecord.Type < 0) return ret;
-	//判断是否假死叉带来的反正
-	var now = new Date().getTime();
-	if(now - LastDeathCrossTime < 15*60*1000){
-		Log("遇到了假死叉带来的15分钟内死叉又返正现像，排除。")
-		return ret;
-	}
-	//获取几个主要的数据：
-	//1.死叉点的7线价和金叉点的7线价
-	//2.死叉内的最低价和金叉前三根K线当中的最高价
-	//3.金叉点的7线价与最低价的比值，金叉后三K最高价与金叉点的7线价和当前价与金叉点的7线价的比值
-	var ema7_king = ema7[ema7.length-crossnum];
-	var max_king = 0;
-	for(var i=2;i<=crossnum;i++){
-		if(i>=crossnum) break;
-		var maxprice=Math.max(max_king,records[records.length-i].Close);
-		if(maxprice>max_king){
-			max_king = maxprice;
-		}
-	}
-	var max_kingk123 = 0;
-	for(var i=0;i<=2;i++){
-		var maxprice=Math.max(max_kingk123,records[records.length-crossnum+i].Close);
-		if(maxprice>max_kingk123){
-			max_kingk123 = maxprice;
-		}
-	}
-	//找到死叉后的最低价
-	var secondrecord = records[records.length-2];
-	var thirdrecord = records[records.length-3];
-	var lowprice = lastrecord.Close;
-	for(var i=2;i<=14+crossnum;i++){
-		var minprice=Math.min(lowprice,records[records.length-i].Close);
-		if(minprice<lowprice){
-			lowprice = minprice;
-		}
-	}
-	Log("金叉点的7线价",ema7_king,"死叉内的最低价",lowprice,"金叉前三根K线当中的最高价",max_kingk123);
-	//如果当前交叉数小于等于4
-	var value1 = secondrecord.Close/ema7_king;
-	//前K开盘必须在14线之上，且当前有效升幅要超过金叉后三线价以上，且平均三条K线升幅不超过1个点
-	if(secondrecord.Open > ma14[ma14.length-2] && lastrecord.Close > max_king){
-		//必须连续两根阳线，且累计有效升幅超过1.5%，时间也在后3分钟，可以买入
-		if(secondrecord.Type > 0 && lastrecord.Close/secondrecord.Open >= 1.015 &&  now >= (lastrecord.Time+720000)){
-			Log("上一根是阳线，且当前也是阳线，累计有效升幅超过1.5%，可以买入");
-			ret = true;
-		}else if(thirdrecord.Type > 0 && secondrecord.Type > 0 && secondrecord.Close > thirdrecord.Close && thirdrecord.Close >= max_kingk123 && lastrecord.Close > secondrecord.Close && value1 > 1.005 && value1 > ema7_king/lowprice){
-			Log("当前K线型态符合普通买入条件，可以买入");
-			ret = true;
-		}else if(thirdrecord.Type < 0 && secondrecord.Type > 0 && thirdrecord.Open/thirdrecord.Close < 1.005 && lastrecord.Close/secondrecord.Open > 1.01 && value1 > 1.005 && lastrecord.Close > secondrecord.Close){
-			Log("在下跌后重新起飞，可以买入");
-			ret = true;
-		}else if(thirdrecord.Type > 0 && secondrecord.Type > 0 && secondrecord.Open >= thirdrecord.Close && lastrecord.Open >= secondrecord.Close){
-			var fourthrecord = records[records.length-4];
-			if(thirdrecord.Open >= fourthrecord.Open){
-				Log("连续三个跳空高开的情况，可以买入");
-				ret = true;
-			}
-		}else if(lastrecord.Close/lastrecord.Open >= 1.015 && lastrecord.Volume >= records[records.length-crossnum].Volume*2){
-			Log("当前K线涨幅达到1.5%，且成交量超过金叉点K线成交量的2倍，可以买入");
-			ret = true;
-		}
-	}
-	//排除一些不合理的情况
-	var signs = [-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, 2, 3, 5, 8, 100];
-	if(ret){
-		if(lastrecord.Close/lowprice >= 1.03 && lastrecord.Volume < records[records.length-crossnum].Volume*2 && thirdrecord.Close >= max_kingk123 && secondrecord.Close >= max_kingk123){
-			//持续下跌的行情下反弹已经超过3%，且连续上升没有回调过后续空间不大，已经回调过除外
-			Log("持续下跌的行情下反弹已经超过3%，成交量没有超过金叉点K线成交量的2倍且连续上升没有回调过后续空间不大，那就放弃。");
-			ret = false;
-		}else if(signs.indexOf(secondrecord.Type) != -1 && signs.indexOf(thirdrecord.Type) != -1 || Math.abs(secondrecord.Close-secondrecord.Open)/(secondrecord.High-secondrecord.Close) < 0.3 && Math.abs(thirdrecord.Close-thirdrecord.Open)/(thirdrecord.High-thirdrecord.Close) < 0.3){
-			//如果前面连续两条线都有抛压表现，那就放弃
-			Log("前面连续两条线都有抛压表现，那就放弃。");
-			ret = false;
-		}
-	}
-	//如果交叉数为10之前，且之前连续阳升或是前面存在顶部抛压K线，那么就要做时间验证，必须要在后3分钟才可以买
-	if(ret && now < (lastrecord.Time+600000) && crossnum<=10 && lastrecord.Volume < records[records.length-crossnum].Volume && (thirdrecord.Close >= max_kingk123 || signs.indexOf(secondrecord.Type) != -1 || signs.indexOf(thirdrecord.Type) != -1)){
-		Log("当前K线是前10分钟，且前面的K线存在抛压信号K线，继续观察。");
-		ret = false;
-	}
-	//设置防守线
-	if(ret) _G(tp.Name+"_StopLinePrice",secondrecord.Open);
-	return ret;
 }
 
 
@@ -589,7 +543,7 @@ function checkCanBuyKingArea2(tp, records, ticker, ema7, ema21, ma14, crossnum){
 1）这里的买入条件比持续下跌要更松，可以在金叉的交叉数为1的时候买入
 2）可以去除较多的排除性条件
 *******************************/
-function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
+function checkCanBuyGoldenArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 	Log("检测当前是否可以在震荡整理行情中金叉区域买入");
 	var ret = false;
 	var lastrecord = records[records.length-1];
@@ -600,9 +554,12 @@ function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 		Log("遇到了假死叉带来的15分钟内死叉又返正现像，排除。")
 		return ret;
 	}
+	var lowprice = getLowPriceInDeathArea(records, crossnum);
+	var capacityincrease = checkCapacityIncrease(records, lowprice);
 	//对于交叉数小于5的时候对成交量进行要求，如果小于金叉点成交量的1.5倍就返回为假
+	//或者当前K线到死叉内最低价K线存在放量上涨情况，可以提交买入
 	if(crossnum<5){
-		if(lastrecord.Volume < records[records.length-crossnum].Volume*1.5){
+		if(lastrecord.Volume < records[records.length-crossnum].Volume*1.5 && !capacityincrease){
 			return ret;
 		}
 	}
@@ -621,16 +578,8 @@ function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 			max_kcrossnum = i+1;
 		}
 	}
-	//找到死叉后的最低价
 	var secondrecord = records[records.length-2];
 	var thirdrecord = records[records.length-3];
-	var lowprice = lastrecord.Close;
-	for(var i=2;i<=14+crossnum;i++){
-		var minprice=Math.min(lowprice,records[records.length-i].Close);
-		if(minprice<lowprice){
-			lowprice = minprice;
-		}
-	}
 	//找到冲高后回调的低价
 	var seclowprice = lastrecord.Low;
 	for(var i=2;i<=crossnum-max_kcrossnum;i++){
@@ -659,7 +608,7 @@ function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 			ret = true;
 		}else if(thirdrecord.Type > 0 && secondrecord.Type > 0 && secondrecord.Open >= thirdrecord.Close && lastrecord.Open >= secondrecord.Close){
 			var fourthrecord = records[records.length-4];
-			if(thirdrecord.Open >= fourthrecord.Open){
+			if(fourthrecord.Type > 0 && thirdrecord.Open >= fourthrecord.Open || fourthrecord.Type < 0 && thirdrecord.Open >= fourthrecord.Close){
 				Log("连续三个跳空高开的情况，可以买入");
 				ret = true;
 			}
@@ -669,22 +618,26 @@ function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 		}
 	}
 	//排除一些不合理的情况
-	var signs = [-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, 2, 3, 5, 8, 100];
-	if(ret){
-		if(lastrecord.Close/lowprice >= 1.05 && lastrecord.Volume < records[records.length-crossnum].Volume*2 && thirdrecord.Close >= max_kingk123 && secondrecord.Close >= max_kingk123){
-			//持续下跌的行情下反弹已经超过5%，且连续上升没有回调过后续空间不大，已经回调过除外
-			Log("持续下跌的行情下反弹已经超过5%，成交量没有超过金叉点K线成交量的2倍且连续上升没有回调过后续空间不大，那就放弃。");
-			ret = false;
-		}else if(signs.indexOf(secondrecord.Type) != -1 && signs.indexOf(thirdrecord.Type) != -1 || Math.abs(secondrecord.Close-secondrecord.Open)/(secondrecord.High-secondrecord.Close) < 0.3 && Math.abs(thirdrecord.Close-thirdrecord.Open)/(thirdrecord.High-thirdrecord.Close) < 0.3){
-			//如果前面连续两条线都有抛压表现，那就放弃
-			Log("前面连续两条线都有抛压表现，那就放弃。");
+	if(capacityincrease){
+		Log("到死叉内最低价K线范围内存在放量上涨情况，不做排除处理。");
+	}else{
+		var signs = [-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, 2, 3, 5, 8, 100];
+		if(ret){
+			if(lastrecord.Close/lowprice >= 1.05 && lastrecord.Volume < records[records.length-crossnum].Volume*2 && thirdrecord.Close >= max_kingk123 && secondrecord.Close >= max_kingk123){
+				//持续下跌的行情下反弹已经超过5%，且连续上升没有回调过后续空间不大，已经回调过除外
+				Log("持续下跌的行情下反弹已经超过5%，成交量没有超过金叉点K线成交量的2倍且连续上升没有回调过后续空间不大，那就放弃。");
+				ret = false;
+			}else if(signs.indexOf(secondrecord.Type) != -1 && signs.indexOf(thirdrecord.Type) != -1 || Math.abs(secondrecord.Close-secondrecord.Open)/(secondrecord.High-secondrecord.Close) < 0.3 && Math.abs(thirdrecord.Close-thirdrecord.Open)/(thirdrecord.High-thirdrecord.Close) < 0.3){
+				//如果前面连续两条线都有抛压表现，那就放弃
+				Log("前面连续两条线都有抛压表现，那就放弃。");
+				ret = false;
+			}
+		}
+		//如果交叉数为10之前，且之前连续阳升或是前面存在顶部抛压K线，那么就要做时间验证，必须要在后3分钟才可以买
+		if(ret && now < (lastrecord.Time+600000) && crossnum<=10 && lastrecord.Volume < records[records.length-crossnum].Volume && (thirdrecord.Close >= max_kingk123 || signs.indexOf(secondrecord.Type) != -1 || signs.indexOf(thirdrecord.Type) != -1)){
+			Log("当前K线是前10分钟，且前面的K线存在抛压信号K线，继续观察。");
 			ret = false;
 		}
-	}
-	//如果交叉数为10之前，且之前连续阳升或是前面存在顶部抛压K线，那么就要做时间验证，必须要在后3分钟才可以买
-	if(ret && now < (lastrecord.Time+600000) && crossnum<=10 && lastrecord.Volume < records[records.length-crossnum].Volume && (thirdrecord.Close >= max_kingk123 || signs.indexOf(secondrecord.Type) != -1 || signs.indexOf(thirdrecord.Type) != -1)){
-		Log("当前K线是前10分钟，且前面的K线存在抛压信号K线，继续观察。");
-		ret = false;
 	}
 	//设置防守线
 	if(ret) _G(tp.Name+"_StopLinePrice",secondrecord.Open);
@@ -699,7 +652,7 @@ function checkCanBuyKingArea3(tp, records, ticker, ema7, ema21, ma14, crossnum){
 2.只要进入了盘桓阶段，只要是正叉都可以买入，但为了排除有下跌可能在达到有效升幅后买胜率要高，
 3.卖出就要注意了，只有死叉后3条K线内连续下跌超过2%之后才可以卖出
 *******************************/
-function checkCanBuyKingArea4(tp, records, ticker, ema7, ema21, ma14, crossnum){
+function checkCanBuyGoldenArea4(tp, records, ticker, ema7, ema21, ma14, crossnum){
 	Log("检测当前是否可以在盘桓储力行情中金叉区域买入");
 	var ret = false;
 	var lastrecord = records[records.length-1];
@@ -743,7 +696,7 @@ function checkCanBuyKingArea4(tp, records, ticker, ema7, ema21, ma14, crossnum){
 3.放心在死叉区域抄底买入，在低部买入的货不再需要在金叉之后第二根K线立即卖出。只在死叉部位卖出平仓，不作按点止盈
 4.不需要设置任何排除条件。
 *******************************/
-function checkCanBuyKingArea5(tp, records, ticker, ema7, ema21, ma14, crossnum){
+function checkCanBuyGoldenArea5(tp, records, ticker, ema7, ema21, ma14, crossnum){
 	Log("检测当前是否可以在持续下跌行情中金叉区域买入");
 	var ret = false;
 	var lastrecord = records[records.length-1];
@@ -781,7 +734,7 @@ function checkCanBuyKingArea5(tp, records, ticker, ema7, ema21, ma14, crossnum){
 /**************************
 检测当前是否可以在死叉区域买入
 **************************/
-function checkCanBuyDeathArea(tp){
+function checkCanBuyInDeathArea(tp){
 	Log("检测当前是否可以在死叉区域买入");
     var ret = false;
 	//根据当前行情选择操作方式
@@ -2434,13 +2387,7 @@ function identifyTheMarket(tp){
 		}
 	}else if(MarketEnvironment == 0 && tp.CrossNum > 0){
 		//找到最低价
-		var lowprice = tp.LastRecord.Close;
-		for(var i=2;i<=14+tp.CrossNum;i++){
-			var minprice=Math.min(lowprice,tp.Records[tp.Records.length-i].Close);
-			if(minprice<lowprice){
-				lowprice = minprice;
-			}
-		}
+		var lowprice = getLowPriceInDeathArea(tp.Records, tp.CrossNum);
 		if(oldmarket == 2 && tp.LastRecord.High/lowprice >= 1.03 && tp.LastRecord.High/lowprice < 1.1){
 			Log("持续下跌后连续上涨超过3%，行情转为震荡整理行情");
 			newmarket = 3;
@@ -2542,17 +2489,7 @@ function identifyTheMarket(tp){
 		}else{
 			//找到上一个金叉当中的最高价，判断价格的回落情况
 			//在小时K线上死叉是时间要比较久的，但为了急时逃顶，就算是在正叉出现了20%以上的回落就要逃离了。
-			var knum = crossnum;
-			if(crossnum<0){
-				knum = getLastAreaKnum(ema7, ema21, crossnum);
-			}
-			var max_king = 0;
-			for(var i=1;i<=knum;i++){
-				var maxprice=Math.max(max_king,Records[Records.length-i].High);
-				if(maxprice>max_king){
-					max_king = maxprice;
-				}
-			}
+			var max_king = getHighPriceInGoldenArea(Records, crossnum, ema7, ema21);
 			if((max_king-tp.Ticker.Last)/max_king >= 0.2){
 				//从最高价下跌20%，还未在小时K线上带来了死叉，进入熊市的持续下跌行情
 				Log("牛市时从最高价下跌20%，还未在小时K线上带来了死叉，但风险很高了，转入持续下跌行情逃离");
@@ -2638,6 +2575,31 @@ function checkSellFinish(tp){
 		Sleep(1300);
 	}
     return ret;
+}
+
+/**
+ * 检测当前K线到最低价线是否存在放量上涨
+ * 买入前如果判断到存在放量上涨的情况,可以放松买入的条件
+ * @param {} records
+ * @param {} lowcloseprice //死叉内最低的收盘价
+ * @return {}
+ */
+function checkCapacityIncrease(records, lowcloseprice){
+	var ret = false;
+	var avgvolume = getAvgVolumeIn24Hour(records);
+	var doubleavgvolume = avgvolume*2;
+	for(var i=1;i<records.length;i++){
+		var record = records[records.length - i];
+		if(record.Close <= record.Open) continue;
+		if(record.Close == lowcloseprice){
+			//到最低价K线为止
+			break;	
+		}
+		if(record.Close/record.Open > 1.005 && record.Volume >= doubleavgvolume){
+			ret = true;
+		}
+	}
+	return ret;
 }
 
 //处理买入成功之后数据的调整
@@ -3102,7 +3064,7 @@ function BearMarketTactics(tp) {
 			if(_G(tp.Name+"_FirstBuyTS") < kingxtime){	//金叉之后还没有建仓
 				//当前没有建仓，检测是否可以建仓
 				//不要在金叉出现的第一时间进入，因为有可能是闪现的，后面又跑回去负值，如果这样的话一旦负值出现就会急售造成巨亏
-				if(checkCanBuyKingArea(tp)){
+				if(checkCanBuyGoldenArea(tp)){
 					if(debug) Log("当前没有建仓，满足建仓条件，准备操作买入操作。");
 					if(doBuy(tp, 1)){
 						_G(tp.Name+"_LastBuyArea",1);	//设置买入位置标识为金叉
@@ -3165,7 +3127,7 @@ function BearMarketTactics(tp) {
 					_G(tp.Name+"_DoedTargetProfit",1);
 //				}else if(tp.TPInfo.CostTotal+tp.Args.MinStockAmount*Ticker.Sell <= _G(tp.Name+"_BalanceLimit") && tp.Account.Balance > tp.Args.MinStockAmount*Ticker.Sell){
 //					//有持仓，但是还有仓位看是否可以买入
-//					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyKingArea(tp)){
+//					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyGoldenArea(tp)){
 //						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
 //						if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",1);
 //					}else{
@@ -3218,7 +3180,7 @@ function BearMarketTactics(tp) {
 					_G(tp.Name+"_DoedTargetProfit",1);
 				}else if(tp.TPInfo.CostTotal+tp.Args.MinStockAmount*Ticker.Sell <= _G(tp.Name+"_BalanceLimit") && tp.Account.Balance > tp.Args.MinStockAmount*Ticker.Sell){
 					//有持仓，但是还有仓位看是否可以买入
-					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyKingArea(tp)){
+					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyGoldenArea(tp)){
 						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
 						if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",1);
 					}else{
@@ -3234,7 +3196,7 @@ function BearMarketTactics(tp) {
 					doInstantSell(tp);
 				}else if(tp.TPInfo.CostTotal+tp.Args.MinStockAmount*Ticker.Sell <= _G(tp.Name+"_BalanceLimit") && tp.Account.Balance > tp.Args.MinStockAmount*Ticker.Sell){
 					//有持仓，但是还有仓位看是否可以买入
-					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyKingArea(tp)){
+					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyGoldenArea(tp)){
 						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
 						if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",1);
 					}else{
@@ -3257,7 +3219,7 @@ function BearMarketTactics(tp) {
 				}else if(tp.TPInfo.CostTotal+tp.Args.MinStockAmount*Ticker.Sell <= _G(tp.Name+"_BalanceLimit") && tp.Account.Balance > tp.Args.MinStockAmount*Ticker.Sell){
 					//有持仓，但是还有仓位看是否可以买入
 					if(_G(tp.Name+"_DoedTargetProfit") == 0){
-						if(checkCanBuyKingArea(tp)){
+						if(checkCanBuyGoldenArea(tp)){
 							if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
 							if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",1);
 						}else{
@@ -3323,7 +3285,7 @@ function BearMarketTactics(tp) {
 					doInstantSell(tp);
 				}else if(tp.Account.Balance > tp.Args.MinStockAmount*Ticker.Sell && tp.TPInfo.CostTotal < _G(tp.Name+"_BalanceLimit")){
 					//有持仓，但是还有仓位看是否可以买入
-					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyDeathArea(tp)){
+					if(_G(tp.Name+"_DoedTargetProfit") == 0 && checkCanBuyInDeathArea(tp)){
 						if(debug) Log("有持仓，当是还可以买入，那就继续买入。");
 						if(doBuy(tp, 1)) _G(tp.Name+"_LastBuyArea",2);	
 					}else{
@@ -3344,7 +3306,7 @@ function BearMarketTactics(tp) {
 				_G(tp.Name+"_LastBuyPrice",0);
 			}else {
 				//当前没有建仓，检测是否可以在底部建仓
-				if(checkCanBuyDeathArea(tp)){
+				if(checkCanBuyInDeathArea(tp)){
 					if(debug) Log("当前没有建仓，交叉数为",tp.CrossNum,"，满足底部建仓条件，准备操作买入操作。");
 					var ret = false;
 					if(CType == 1){
