@@ -2618,19 +2618,24 @@ function checkSellFinish(tp){
  * @param {} lowcloseprice //死叉内最低的收盘价
  * @return {}
  */
-function checkCapacityIncrease(records, lowcloseprice){
+function checkCapacityIncrease(records, crossnum, lowcloseprice){
 	var ret = false;
 	var avgvolume = getAvgVolumeIn24Hour(records);
-	var doubleavgvolume = avgvolume*2;
 	for(var i=1;i<records.length;i++){
 		var record = records[records.length - i];
-		if(record.Close <= record.Open) continue;
-		if(record.Close == lowcloseprice){
+		if(record.Close === lowcloseprice){
 			//到最低价K线为止
 			break;	
 		}
-		if(record.Close/record.Open > 1.005 && record.Volume >= doubleavgvolume){
+		if(record.Close <= record.Open) continue;
+		if(i<=crossnum && record.Close/record.Open > 1.005 && record.Volume >= avgvolume*2 && (record.Close-record.Open)/(record.High-record.Low) > 0.8){
+			//金叉内，涨幅超过0.5%，成交量大于平均成交易2倍，体大于K线范围8成以上
 			ret = true;
+			break;
+		}else if(i>crossnum && record.Close/record.Open > 1.005 && record.Volume >= avgvolume*3 && (record.Close-record.Open)/(record.High-record.Low) > 0.8){
+			//死叉内，涨幅超过0.5%，成交量大于平均成交易2倍，体大于K线范围8成以上
+			ret = true;
+			break;
 		}
 	}
 	return ret;
