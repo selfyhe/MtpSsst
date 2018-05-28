@@ -60,8 +60,6 @@ function KLineData(){	//K线数据结构对像
 	this.EMAArray1 = [];	//7均线
 	this.EMAArray2 = [];	//21均线
 	this.CrossNum = 0; 	//当前k线7与21均线交叉数
-	this.LastCrossNum = 0;	//上一次的交叉数，用来判断当前是否发生了交叉转换
-	this.LastDeathCrossTime = 0;	//上一次死叉的时间
 }
 //全局变量定义
 function TradePair(){
@@ -75,6 +73,7 @@ function TradePair(){
 	this.LastIdentifyMarket = {"environment":1,"market":0,"st":0}; //上一次分析行情时间和结果
 	this.LastChangeStopLine = 0;	//上一次调整止损线时间
 	this.LastKInUpwardTrend = {"inut":false,"st":0};	//当前K线是否是上升趋势
+	this.KLineHistroy = {"KLine_M15":{"LastCrossNum":0,"LastDeathCrossTime":0},"KLine_H1":{"LastCrossNum":0,"LastDeathCrossTime":0}};	//上一次的交叉数，用来判断当前是否发生了交叉转换
 }
 var TradePairs = [];	//所有交易对数组
 var NowTradePairIndex = 0;		//当前的交易所对索引
@@ -551,15 +550,17 @@ function checkCanBuyGoldenArea3(tp){
 	var ret = false;
 	var records = KLine_M15.Records;
 	var lastrecord = KLine_M15.LastRecord;
-	var ma14 = KLine_M15.MAArray;
-	var ema7 = KLine_M15.EMAArray1;
 	var ema21 = KLine_M15.EMAArray2;
 	var crossnum = KLine_M15.CrossNum;
 	if(lastrecord.Type < 0) return ret;
 	//判断是否假死叉带来的反正
 	var now = new Date().getTime();
-	if(now - KLine_M15.LastDeathCrossTime < 15*60*1000){
+	if(now - tp.KLineHistroy.KLine_M15.LastDeathCrossTime < 15*60*1000){
 		Log("遇到了假死叉带来的15分钟内死叉又返正现像，排除。")
+		return ret;
+	}
+	if(KLine_H1.CrossNum < 0){
+		Log("时K线还处在死叉状态，买入胜率低排除。")
 		return ret;
 	}
 	var lowprice = getLowPriceInDeathArea(records, crossnum);
@@ -575,6 +576,7 @@ function checkCanBuyGoldenArea3(tp){
 	//1.死叉点的7线价和金叉点的7线价
 	//2.死叉内的最低价和金叉前三根K线当中的最高价
 	//3.金叉点的7线价与最低价的比值，金叉后三K最高价与金叉点的7线价和当前价与金叉点的7线价的比值
+	var ema7 = KLine_M15.EMAArray1;
 	var ema7_king = ema7[ema7.length-crossnum];
 	var max_kingk123 = 0;
 	var max_kcrossnum = 0;
@@ -598,6 +600,7 @@ function checkCanBuyGoldenArea3(tp){
 	}
 	Log("金叉点的7线价",ema7_king,"死叉内的最低价",lowprice,"金叉前三根K线当中的最高价",max_kingk123,"金叉前三根K线当中的最高价K线交叉数是",max_kcrossnum,"金叉前三根K线当中的最高价后的最低价是",seclowprice);
 	//如果当前交叉数小于等于4
+	var ma14 = KLine_M15.MAArray;
 	var value1 = secondrecord.Close/ema7_king;
 	//前K开盘必须在14线之上，且当前有效升幅要超过金叉后三线价以上，且平均三条K线升幅不超过1个点
 	if(secondrecord.Open > ma14[ma14.length-2] && (lastrecord.Close-lowprice)/(max_kingk123-lowprice) > 0.6){
@@ -670,7 +673,7 @@ function checkCanBuyGoldenArea4(tp){
 	if(lastrecord.Type < 0) return ret;
 	//判断是否假死叉带来的反正
 	var now = new Date().getTime();
-	if(now - KLine_M15.LastDeathCrossTime < 15*60*1000){
+	if(now - tp.KLineHistroy.KLine_M15.LastDeathCrossTime < 15*60*1000){
 		Log("遇到了假死叉带来的15分钟内死叉又返正现像，排除。")
 		return ret;
 	}
@@ -716,7 +719,7 @@ function checkCanBuyGoldenArea5(tp){
 	if(lastrecord.Type < 0) return ret;
 	//判断是否假死叉带来的反正
 	var now = new Date().getTime();
-	if(now - KLine_M15.LastDeathCrossTime < 15*60*1000){
+	if(now - tp.KLineHistroy.KLine_M15.LastDeathCrossTime < 15*60*1000){
 		Log("遇到了假死叉带来的15分钟内死叉又返正现像，排除。")
 		return ret;
 	}
@@ -2015,15 +2018,18 @@ function checkCanBuyInDeathArea5(tp){
 function checkInUpwardTrend(tp){
 	var ret = false;
 	var Records = KLine_H1.Records;
-	if(tp.LastKInUpwardTrend.st == Records[Records.length - 1].Time) return tp.LastKInUpwardTrend.inut;
+	if(tp.LastKInUpwardTrend.st == KLine_H1.LastRecord.Time) return tp.LastKInUpwardTrend.inut;
 	
 	var ema7 = KLine_H1.EMAArray1;
 	var ema21 = KLine_H1.EMAArray2;
 	var crossnum = KLine_H1.CrossNum; 
     if(crossnum<0) {
-    	Log("交叉数不足无法判断趋势");
-		tp.LastKInUpwardTrend.st = Records[Records.length - 1].Time;
+    	Log("当前小时K线依然为死叉，交叉数为",crossnum,"为下行趋势中。");
+		tp.LastKInUpwardTrend.st = KLine_H1.LastRecord.Time;
 		tp.LastKInUpwardTrend.inut = ret;
+    	return ret; 
+    }else if(crossnum == 0) {
+    	Log("交前小时K线交叉数不足，无法判断。");
     	return ret; 
     }
 	var upnum = 0;
@@ -2055,7 +2061,7 @@ function checkInUpwardTrend(tp){
 	}else{
 		Log("当前处于下行趋势");
 	}
-	tp.LastKInUpwardTrend.st = Records[Records.length - 1].Time;
+	tp.LastKInUpwardTrend.st = KLine_H1.LastRecord.Time;
 	tp.LastKInUpwardTrend.inut = ret;
 	return ret;
 }
@@ -2514,8 +2520,8 @@ function identifyTheMarket(tp){
 	}else{
 		//在牛市当中时
 		if(crossnum < -24){
-			//死叉后24小时还没有下跌超过5%，直接转入震荡整理行情，说明行情回落得很慢
-			Log("死叉后24小时还没有下跌超过5%，直接转入震荡整理行情");
+			//死叉后24小时还没有下跌超过20%，直接转入震荡整理行情，说明行情回落得很慢
+			Log("死叉后24小时还没有下跌超过20%，直接转入震荡整理行情");
 			MarketEnvironment = 0;
 			newmarket = 3;
 		}else{
@@ -2527,14 +2533,6 @@ function identifyTheMarket(tp){
 				Log("牛市时从最高价下跌20%，还未在小时K线上带来了死叉，但风险很高了，转入持续下跌行情逃离");
 				MarketEnvironment = 0;
 				newmarket = 2;
-			}else if(crossnum<-1 && crossnum >= -24){
-				//死叉24条K线以内还没有回落超过20%，说明行情回落得不急，是震荡下行
-				if((max_king-Ticker.Last)/max_king >= 0.05 && (max_king-Ticker.Last)/max_king <= 0.2){
-					//从最高价下跌大于5%但没有超过20%，进入震荡整理行情行情
-					Log("牛市时从最高价下跌大于5%但没有超过20%，进入震荡整理行情行情");
-					MarketEnvironment = 0;
-					newmarket = 3;
-				}
 			}
 		}
 	}	
@@ -2726,17 +2724,17 @@ function getTradePair(name){
 function getLastAreaKnum(ema7, ema21, crossnum){
 	var new_ema7 = new Array();
 	var new_ema21 = new Array();
-	var stopnum = ema7.length - crossnum;
+	var stopnum = ema7.length - Math.abs(crossnum);
 	for(var i = 0;i<ema7.length;i++){
 		if(i === stopnum) break;
 		new_ema7.push(ema7[i]);
 	}
-	stopnum = ema21.length - crossnum;
+	stopnum = ema21.length - Math.abs(crossnum);
 	for(var i = 0;i<ema21.length;i++){
 		if(i === stopnum) break;
 		new_ema21.push(ema21[i]);
 	}
-	return getEmaCrossNum(new_ema7, new_ema21);
+	return Math.abs(getEmaCrossNum(new_ema7, new_ema21));
 }
 
 
@@ -3035,44 +3033,61 @@ function BullMarketTactics(tp) {
 	if(debug) Log("启动牛市短线策略，现在进行行情数据的读取和分析。");
 	//判断是否假死叉带来的反正
 	var now = new Date().getTime();
-	if(now - KLine_M15.LastDeathCrossTime < 15*60*1000){
+	if(now - tp.KLineHistroy.KLine_M15.LastDeathCrossTime < 15*60*1000){
 		Log("遇到了假死叉带来的15分钟内死叉又返正现像，排除。")
 		return;
 	}
 	//根据当前的行情来决定操作
-	if(KLine_M15.CrossNum > 1){
-		//当前处理上升行情
-		//判断当前是否可以买入，如果可以就买入，不能买就观察
-		if(Account.Balance > tp.Args.MinStockAmount*Ticker.Last && tp.TPInfo.StockValue < _G(tp.Name+"_BalanceLimit")){
-			//只要当前价在14日均线之上就可以买入
-			if(KLine_M15.LastRecord.Close > KLine_M15.MAArray[KLine_M15.MAArray.length-1]){
-				if(debug) Log("当前上行行情，交叉数为",KLine_M15.CrossNum,"，当前还有仓位并且也满足开仓条件，准备操作买入操作。");
-				doBuy(tp, 1);
+	if(KLine_H1.CrossNum > 0){
+		if(KLine_M15.CrossNum > 0){
+			//当前处理上升行情
+			//判断当前是否可以买入，如果可以就买入，不能买就观察
+			if(Account.Balance > tp.Args.MinStockAmount*Ticker.Last && tp.TPInfo.StockValue < _G(tp.Name+"_BalanceLimit")){
+				//只要当前价在14日均线之上就可以买入
+				if(KLine_M15.LastRecord.Close >= KLine_M15.MAArray[KLine_M15.MAArray.length-1]){
+					if(debug) Log("当前上行行情，交叉数为",KLine_M15.CrossNum,"，当前还有仓位并且也满足开仓条件，准备操作买入操作。");
+					doBuy(tp, 1);
+				}else{
+					if(debug) Log("当前上行行情，交叉数为",KLine_M15.CrossNum,"，当前还有仓位，但当前没有达到开仓条件，继续观察行情。");
+				}
 			}else{
-				if(debug) Log("当前上行行情，交叉数为",KLine_M15.CrossNum,"，当前还有仓位，但当前没有达到开仓条件，继续观察行情。");
+				//重置止盈标识
+				_G(tp.Name+"_DoedTargetProfit", 0);
 			}
 		}else{
-			//重置止盈标识
-			_G(tp.Name+"_DoedTargetProfit", 0);
+			//当前处于下降行情
+			//死叉出现，判断是否有持仓：
+			//1)如果有，操作卖出，如果已经达到止损线，那就全部出货，否则只开仓卖出30%仓位，底部再开仓买入调整持仓量和成本
+			//2)没有，输出信息不作处理。
+			if(Account.Stocks > tp.Args.MinStockAmount){
+				if(_G(tp.Name+"_CanTargetProfitNum") > 0){
+					//正在操作的止盈还没有完成
+					if(debug) Log("本次止盈操作还没有完成，还有",_G(tp.Name+"_CanTargetProfitNum"),"个币需要卖出，继续操作止盈。");
+					doTargetProfitSell(tp);
+				}else if(_G(tp.Name+"_DoedTargetProfit") === 0){
+					//读取时K线内最高价
+					var max_king = getHighPriceInGoldenArea(KLine_H1.Records, KLine_H1.CrossNum, KLine_H1.EMAArray1, KLine_H1.EMAArray2);
+					if((max_king-Ticker.Last)/max_king >= 0.05){
+						if(debug) Log("当前出现死叉，交叉数为",KLine_M15.CrossNum,"，当前还未止盈过，准备操作止盈。");
+						doTargetProfitSell(tp);
+					}else{
+						if(debug) Log("当前牛市行情中15分钟有死叉，但下跌幅度不足5%，暂时不作操作。");
+					}
+				}else{
+					if(debug) Log("当前出现死叉，交叉数为",KLine_M15.CrossNum,"，已经止盈过，等候适合机会再补入低价的货。");
+				}
+			}else{
+				if(debug) Log("当前牛市下跌行情中，因为没有持仓，所在静观市场变化，有机会再买入。");
+			}
 		}
 	}else{
-		//当前处于下降行情
-		//死叉出现，判断是否有持仓：
-		//1)如果有，操作卖出，如果已经达到止损线，那就全部出货，否则只开仓卖出30%仓位，底部再开仓买入调整持仓量和成本
-		//2)没有，输出信息不作处理。
+		//1小时K线出现死叉，平仓出货
 		if(Account.Stocks > tp.Args.MinStockAmount){
-			if(_G(tp.Name+"_CanTargetProfitNum") > 0){
-				//正在操作的止盈还没有完成
-				if(debug) Log("本次止盈操作还没有完成，还有",_G(tp.Name+"_CanTargetProfitNum"),"个币需要卖出，继续操作止盈。");
-				doTargetProfitSell(tp);
-			}else if(KLine_M15.CrossNum == -2 && _G(tp.Name+"_DoedTargetProfit") === 0){
-				if(debug) Log("当前出现死叉，交叉数为",KLine_M15.CrossNum,"，当前还未止盈过，准备操作止盈。");
-				doTargetProfitSell(tp);
-			}else{
-				if(debug) Log("当前出现死叉，交叉数为",KLine_M15.CrossNum,"，已经止盈过，等候适合机会再补入低价的货。");
+			var now = new Date().getTime();
+			if(now - tp.KLineHistroy.KLine_H1.LastDeathCrossTime > 15*60*1000){
+				Log("死叉已经持续了15分钟，确认有效，平仓出货。")
+				doInstantSell(tp);
 			}
-		}else{
-			if(debug) Log("当前下跌行情中，因为没有持仓，所在静观市场变化，有机会再买入。");
 		}
 	}
 }
@@ -3475,9 +3490,6 @@ function getKLineData(tp, type){
 	kline.EMAArray1 = TA.EMA(records,7);
 	kline.EMAArray2 = TA.EMA(records,21);
 	kline.CrossNum = getEmaCrossNum(kline.EMAArray1, kline.EMAArray2);   
-	//设置上次死叉的时间
-	if(kline.LastCrossNum > 0 && kline.CrossNum < 0 && kline.LastDeathCrossTime != kline.LastRecord.Time) kline.LastDeathCrossTime = kline.LastRecord.Time;
-	kline.LastCrossNum = kline.CrossNum;
 	return kline;
 }
 
@@ -3496,7 +3508,13 @@ function main() {
 			Account = _C(tp.Exchange.GetAccount);
 			Ticker =  _C(tp.Exchange.GetTicker);
 			KLine_M15 = getKLineData(tp, PERIOD_M15);
+			var klh_m15 = tp.KLineHistroy.KLine_M15;
+			if(klh_m15.LastCrossNum > 0 && KLine_M15.CrossNum < 0 && klh_m15.LastDeathCrossTime != KLine_M15.LastRecord.Time) klh_m15.LastDeathCrossTime = KLine_M15.LastRecord.Time;
+			klh_m15.LastCrossNum = KLine_M15.CrossNum;
 			KLine_H1 = getKLineData(tp, PERIOD_H1);
+			var klh_h1 = tp.KLineHistroy.KLine_H1;
+			if(klh_h1.LastCrossNum > 0 && KLine_H1.CrossNum < 0 && klh_h1.LastDeathCrossTime != KLine_H1.LastRecord.Time) klh_h1.LastDeathCrossTime = new Date().getTime();
+			klh_h1.LastCrossNum = KLine_H1.CrossNum;
 
 			//根据市场环境调整行情参数
 			if(MarketEnvironment){
