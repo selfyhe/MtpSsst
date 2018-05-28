@@ -550,7 +550,6 @@ function checkCanBuyGoldenArea3(tp){
 	var ret = false;
 	var records = KLine_M15.Records;
 	var lastrecord = KLine_M15.LastRecord;
-	var ema21 = KLine_M15.EMAArray2;
 	var crossnum = KLine_M15.CrossNum;
 	if(lastrecord.Type < 0) return ret;
 	//判断是否假死叉带来的反正
