@@ -202,6 +202,7 @@ function parseArgsJson(json){
 					if(!_G(tp.Name+"_CanTargetProfitNum")) _G(tp.Name+"_CanTargetProfitNum",0);		//本次止盈还可卖出数量
 					if(!_G(tp.Name+"_EveryTimesTPSN")) _G(tp.Name+"_EveryTimesTPSN",0);		//每次止盈数量					
 					if(!_G(tp.Name+"_LastOrderId")) _G(tp.Name+"_LastOrderId",0);	//上一次交易订单编号
+					if(!_G(tp.Name+"_BeforeBuyingStocks")) _G(tp.Name+"_BeforeBuyingStocks",0);	//买入前的币数量
 					if(!_G(tp.Name+"_OperatingStatus")) _G(tp.Name+"_OperatingStatus",OPERATE_STATUS_NONE);	//当前操作状态标识
 					if(!_G(tp.Name+"_AddTime")) _G(tp.Name+"_AddTime",_D());	//交易对添加时间
 					ret = true;
@@ -1861,13 +1862,10 @@ function checkCapacityIncrease(records, crossnum, lowcloseprice){
 function changeDataForBuy(tp,order){
 	//读取原来的持仓均价和持币总量
 	var avgPrice = _G(tp.Name+"_AvgPrice");
-	var coinAmount = Account.Stocks;
-	if(coinAmount == 0 ){
-		//刚刚成交，账户信息还没有读到币的入账，直接赋值
-		coinAmount = order.DealAmount*(1-tp.Args.BuyFee);
-	}
+	var beforeBuyingStocks = _G(tp.Name+"_BeforeBuyingStocks");
+	var coinAmount = beforeBuyingStocks + order.DealAmount*(1-tp.Args.BuyFee);
 	//计算持仓总价
-	var Total = parseFloat((avgPrice*(coinAmount-order.DealAmount*(1-tp.Args.BuyFee))+order.AvgPrice * order.DealAmount).toFixed(tp.Args.PriceDecimalPlace));
+	var Total = parseFloat((avgPrice*beforeBuyingStocks+order.AvgPrice * order.DealAmount).toFixed(tp.Args.PriceDecimalPlace));
 	
 	//计算并调整平均价格
 	avgPrice = parseFloat((Total / coinAmount).toFixed(tp.Args.PriceDecimalPlace));
@@ -2196,8 +2194,10 @@ function doBuy(tp, type){
 			}
 		}
 		if(orderid) {
+			//提交成功，保存当前的必要状态
 			_G(tp.Name+"_LastOrderId",orderid);
 			_G(tp.Name+"_OperatingStatus", OPERATE_STATUS_BUY);	
+			_G(tp.Name+"_BeforeBuyingStocks",Account.Stocks);
 			_G(tp.Name+"_LastBuyTS", KLine_M15.LastRecord.Time);
 			_G(tp.Name+"_LastSignalTS", 0);
 			ret = true;
