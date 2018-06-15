@@ -1652,21 +1652,59 @@ function identifyTheMarket(tp){
 				newmarket = 2; 
 			}else if(crossnum >= 24 || lastrecord.High/kingrecord.Low >= 1.1){
 				if(Ticker.Last/kingrecord.Open > 1.4){
-					//连续上涨超过，进入牛市
-					Log("金叉后连续拉涨超过40%，进入牛市行情");
-					MarketEnvironment = 1;
-					newmarket = 0;
+					if(oldmarket != 0){
+						var highprice = getHighPriceInGoldenArea(Records, crossnum, ema7, ema21);
+						if(lastrecord.Close < highprice){
+							//回落实还没有超过前高，继续保持当前行情
+							if(hp){
+								Log("牛市行情回落实还没有超过前高，现在行情显示横盘，进入盘桓储力行情");
+								newmarket = 4; 
+							}else{
+								Log("牛市行情回落实还没有超过前高，继续保持当前行情");
+								newmarket = oldmarket;
+							}
+						}else{
+							//连续上涨超过，进入牛市
+							Log("金叉后连续拉涨超过40%，进入牛市行情");
+							MarketEnvironment = 1;
+							newmarket = 0;
+						}
+					}
 				}else if((crossnum < 24 && lastrecord.High/kingrecord.Low >= 1.11 || crossnum >= 24 && lastrecord.High/kingrecord.Low >= 1.1)){
+					var highprice = getHighPriceInGoldenArea(Records, crossnum, ema7, ema21);
 					if(oldmarket != 5){
-						Log("金叉后连续拉涨超过10%或连续上涨期超过1天，进入反弹上冲行情");
-						newmarket = 5; //反弹上冲行情
-						_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
+						//判断当前是否为进入反弹上冲之后回落但还没有造成死叉或是还没有跌下金叉后涨幅的10%
+						if(lastrecord.Close < highprice){
+							//回落实还没有超过前高，继续保持当前行情
+							if(hp){
+								Log("反弹上冲回落实还没有超过前高，现在行情显示横盘，进入盘桓储力行情");
+								newmarket = 4; 
+							}else{
+								Log("反弹上冲回落实还没有超过前高，继续保持当前行情");
+								newmarket = oldmarket;
+							}
+						}else{
+							Log("金叉后连续拉涨超过10%或连续上涨期超过1天，进入反弹上冲行情");
+							newmarket = 5; //反弹上冲行情
+							_G(tp.Name+"_DoedTargetProfit",0);	//行情转好，重置止盈标识
+						}
 					}else{
-						Log("继续保持反弹上冲行情");
+						//之前是反弹上冲行情，判断有没有超过5个点的回落，如有就进行调整
+						if((highprice-lastrecord.Close)/highprice > 0.05){
+							if(hp){
+								Log("反弹上冲回落实现在行情显示横盘，转变为盘桓储力行情");
+								newmarket = 4; 
+							}else{
+								Log("反弹上冲回落实，行情转变为震荡整理行情");
+								newmarket = 3;
+							}
+						}else{
+							Log("继续保持反弹上冲行情");
+						}
 					}
 				}else{
 					if(oldmarket == 5){
-						if(crossnum > 0 && lastrecord.High/kingrecord.Low < 1.1 && lastrecord.High/kingrecord.Low >= 1.08 && Account.Stocks > tp.Args.MinStockAmount){
+						if(lastrecord.High/kingrecord.Low < 1.1 && lastrecord.High/kingrecord.Low >= 1.08 && Account.Stocks > tp.Args.MinStockAmount){
 							Log("上涨幅度回落到10%与8%之间，当前有持仓继续保持反弹上冲行情继续观察");
 							newmarket = 5; 
 						}else{
