@@ -1178,7 +1178,7 @@ function checkInUpwardTrend(tp){
 	var upnum = 0;
 	var downnum = 0;
 	var knum = crossnum;
-	Log("knum",knum);
+	//Log("knum",knum);
 	if(knum < 14){
 		var klen = 0; 
 		if(crossnum<0) {
@@ -1187,7 +1187,7 @@ function checkInUpwardTrend(tp){
 			klen = Math.abs(getLastAreaKnum(ema7, ema21, crossnum));
 			klen += knum-1;
 		}
-		Log("klen",klen);
+		//Log("klen",klen);
 		var lowprice = {"price":ema7[ema7.length-1],"id":1};
         for(var i=2;i<=klen;i++){
             var minprice = Math.min(lowprice.price, ema7[ema7.length-i]);
@@ -1197,7 +1197,7 @@ function checkInUpwardTrend(tp){
             }
         }
         knum = lowprice.id;
-        Log("knum",knum);
+        //Log("knum",knum);
 	}
 	if(knum<7){
 		Log("向上K线只有",knum,"条，不足形成向上趋势");
@@ -1210,7 +1210,7 @@ function checkInUpwardTrend(tp){
 			downnum++;
 		}
 	}
-	Log("knum",knum,"upnum",upnum,"upnum/knum",upnum/knum);
+	//Log("knum",knum,"upnum",upnum,"upnum/knum",upnum/knum);
 	if(upnum/knum > 0.7){
 		ret = true;
 		Log("当前处于上行趋势");
@@ -1232,7 +1232,7 @@ function checkBreakDefenseLine(tp){
 	Log("检测是否跌破止损线（防守线）");
 	var ret = false;
 	var defenseline = _G(tp.Name+"_StopLinePrice");
-	if(!defenseline) defenseline = _G(tp.Name+"_AvgPrice")*(1+tp.Args.BuyFee+tp.Args.SellFee);
+	if(!defenseline) defenseline = _G(tp.Name+"_AvgPrice")*(1+tp.Args.SellFee);
 	var ma = KLine_M15.MAArray;
 	var maprice = ma[ma.length-1];
 	//Log("if(",ticker.Last," < ",maprice," && ticker.Last < ",defenseline,"){");
@@ -1440,7 +1440,7 @@ function identifyShadowLine(tp){
 			break;
 		}
 	}
-	var costprice = _G(tp.Name+"_AvgPrice")*(1+tp.Args.BuyFee+tp.Args.SellFee);
+	var costprice = _G(tp.Name+"_AvgPrice")*(1+tp.Args.SellFee);
 	var downnum = nowticker.High - nowticker.Close;
 	var kbody = nowticker.Close - nowticker.Open;
 	var downpercent = downnum/nowticker.Open;
@@ -1548,7 +1548,7 @@ function identifyTransverseConcussion(tp){
 				if(min < low) low = min;
 			}
 		}  
-		Log("7线幅度：high=",high,"low=",low,"high/low=",high/low);
+		//Log("7线幅度：high=",high,"low=",low,"high/low=",high/low);
 		if((high-low)/high > 0.005 || high/low > 1.005){
 			return false;
 		}
@@ -1558,7 +1558,7 @@ function identifyTransverseConcussion(tp){
 			sum += Math.abs((numbers[i] - avg) / avg);  
 		}  
 		var val = sum / numbers.length;  
-		Log("val=",val);
+		//Log("val=",val);
 		if(val < 0.005){
 			ret = true;
 		}
@@ -1768,7 +1768,7 @@ function changeDataForSell(tp,order){
 	var avgPrice = _G(tp.Name+"_AvgPrice");
 	var TotalProfit = _G("TotalProfit");
 	var SubProfit = _G(tp.Name+"_SubProfit");
-	var profit = parseFloat((order.AvgPrice*order.DealAmount*(1-tp.Args.SellFee) - avgPrice*order.DealAmount*(1+tp.Args.BuyFee)).toFixed(tp.Args.PriceDecimalPlace));
+	var profit = parseFloat((order.AvgPrice*order.DealAmount*(1-tp.Args.SellFee) - avgPrice*order.DealAmount).toFixed(tp.Args.PriceDecimalPlace));
 	SubProfit += profit;
 	TotalProfit += profit;
 	tp.LastProfit = profit;
@@ -2014,9 +2014,9 @@ function checkCanTargetProfit(tp){
 			//不建议操作止盈
 			break;
 	}
-	var lastsell = _G(tp.Name+"_LastSellPrice") ? _G(tp.Name+"_LastSellPrice") : _G(tp.Name+"_AvgPrice")*(1 + tp.Args.BuyFee + tp.Args.SellFee);
+	var lastsell = _G(tp.Name+"_LastSellPrice") ? _G(tp.Name+"_LastSellPrice") : _G(tp.Name+"_AvgPrice")*(1 + tp.Args.SellFee);
 	lastsell = lastsell * (1 + profit);
-	Log("_LastSellPrice",_G(tp.Name+"_LastSellPrice"),"_AvgPrice",_G(tp.Name+"_AvgPrice"),"lastsell",lastsell,"Ticker.Buy",Ticker.Buy);
+	//Log("_LastSellPrice",_G(tp.Name+"_LastSellPrice"),"_AvgPrice",_G(tp.Name+"_AvgPrice"),"lastsell",lastsell,"Ticker.Buy",Ticker.Buy);
 	if(Ticker.Buy > lastsell){
 		ret = true;
 	}
@@ -2036,7 +2036,7 @@ function checkCanSellInGoodMarket(tp){
 	if(KLine_M15.CrossNum>0){
 		//在金叉状态下
 		var defenseline = _G(tp.Name+"_StopLinePrice");
-		if(!defenseline) defenseline = _G(tp.Name+"_AvgPrice")*(1+tp.Args.BuyFee+tp.Args.SellFee);
+		if(!defenseline) defenseline = _G(tp.Name+"_AvgPrice")*(1+tp.Args.SellFee);
 		if(lastrecord.Close <= defenseline){
 			ret = true;
 		}else{
@@ -2414,7 +2414,7 @@ function BearMarketTactics(tp) {
 					//如果在没有达到1%浮盈之前出现止损信号，那尽快进行止损
 					if(debug) Log("在没有达到1%浮盈之前出现止损信号，那尽快进行止损。");
 					doInstantSell(tp);
-				}else if((Ticker.Buy/avgPrice*(1+tp.Args.BuyFee+tp.Args.SellFee)) >= 1.01){
+				}else if((Ticker.Buy/avgPrice*(1+tp.Args.SellFee)) >= 1.01){
 					if(debug) Log("持续下跌行情获利1点就尽快出手。");
 					doInstantSell(tp);
 				}else{
@@ -2523,7 +2523,7 @@ function BearMarketTactics(tp) {
 				if(debug) Log("当价格恐慌爆跌后回归理性，从-1回升到正叉，可以操作平仓。");
 				doInstantSell(tp);
 			}else if(CType == 2 || (CType == 3 || CType == 5) && !checkInUpwardTrend(tp)){	//在持续下跌行情中或是在时K线处于下行时，交叉数为2时进行止盈平仓
-				if(KLine_M15.CrossNum >= 2 && (Ticker.Buy/avgPrice*(1+tp.Args.BuyFee+tp.Args.SellFee)) >= 1.01){
+				if(KLine_M15.CrossNum >= 2){
 					if(debug) Log("在底部买入之后手上还有",Account.Stocks,"个币，准备操作止盈平仓。");
 					doInstantSell(tp);
 				}
@@ -2573,7 +2573,7 @@ function BearMarketTactics(tp) {
 				}else if(CType > 1 && (Ticker.Buy <= _G(tp.Name+"_StopLinePrice"))){
 					if(debug) Log("抄底后当前价格跌到止损线",_G(tp.Name+"_StopLinePrice"),"以下，操作止损。");
 					doInstantSell(tp);
-				}else if(CType > 1 && (Ticker.Buy <= avgPrice*(1+tp.Args.BuyFee+tp.Args.SellFee) && (new Date().getTime()-_G(tp.Name+"_FirstBuyTs")) > 10800000)){
+				}else if(CType > 1 && (Ticker.Buy <= avgPrice*(1+tp.Args.SellFee) && (new Date().getTime()-_G(tp.Name+"_FirstBuyTs")) > 10800000)){
 					if(debug) Log("抄底买入后2个小时依然死叉且价格在成本线以下，操作止损。");
 					doInstantSell(tp);
 				}else if(Account.Balance > tp.Args.MinStockAmount*Ticker.Sell && tp.TPInfo.CostTotal < _G(tp.Name+"_BalanceLimit")){
