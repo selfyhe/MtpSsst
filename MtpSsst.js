@@ -1526,7 +1526,7 @@ function identifyTransverseConcussion(tp){
 		//Log("有效K线",records.length,"条，不满足条件");
 	}
 	//如果方法一没有通过，那就使用均线均差的判断方式再试试
-	if(!ret){
+	if(!ret || records.length == 28){
 		//再计算一下21个k线的7日均线值比均差比例
 		var ema7 = KLine_M15.EMAArray1;
 		var numbers = [];
@@ -1550,7 +1550,7 @@ function identifyTransverseConcussion(tp){
 		}  
 		Log("7线幅度：high=",high,"low=",low,"high/low=",high/low);
 		if((high-low)/high > 0.005 || high/low > 1.005){
-			return ret;
+			return false;
 		}
 		avg = sum / numbers.length;  
 		sum = 0;  
