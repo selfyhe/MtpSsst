@@ -508,6 +508,10 @@ function onTick(tp) {
 		if((Ticker.Last/tp.LastBuyPrice) >= (1+tp.Args.TargetProfit)){
 			Log("当前币价达到止盈点，操作止盈出货。");
 			doInstantSell(tp, OPERATE_STATUS_SELL_TARGETPROFIT);
+		}else if(tp.BigLine.CrossNum <= -1 && (Ticker.Last-tp.LastBuyPrice) > (tp.Args.BuyFee+tp.Args.BuyFee)){
+			//小线进入死叉要操作止盈
+			Log("当前交易对小线进入死叉要操作止盈，操作出货止盈。",CrossNum);
+			doInstantSell(tp, OPERATE_STATUS_SELL_INSTANT);
 		}else if(tp.BigLine.CrossNum < -1 && Ticker.Last/tp.LastBuyPrice < 0.90){
 			//大线进入死叉要操作止损
 			Log("当前交易对大线出现死叉且损失超过10%，操作出货止损。",CrossNum);
